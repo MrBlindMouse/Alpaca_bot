@@ -2,7 +2,9 @@ import os
 from dotenv import load_dotenv, dotenv_values
 import requests
 import json
-from alpaca.data.historical import StockHistoricalDataClient
+from alpaca.trading.client import TradingClient
+from alpaca.trading.requests import GetAssetsRequest
+from alpaca.trading.enums import AssetClass
 
 load_dotenv()
 key = os.getenv("KEY")
@@ -10,10 +12,9 @@ secret = os.getenv("SECRET")
 
 
 def main():
-    url = "https://data.alpaca.markets/v1beta1/corporate-actions?types=cash_dividend%2C%20stock_dividend&start=2020-01-01&limit=100&sort=desc"
-    headers = {"accept":"application/json"}
-    response = requests.get(url, headers=headers)
-    print(json.dumps(response, indent=4))
+    client = TradingClient(key, secret, paper=True)
+    params = GetAssetsRequest(asset_class=AssetClass.STOCK)
+    assets = client.get_all_assets(params)
 
 
 if __name__ == "__main__":
