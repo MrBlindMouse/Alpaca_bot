@@ -36,16 +36,28 @@ def main():
         change_high = (high-avg)/avg
         change_low = (avg-low)/avg
         if (get_period(start_date)*3) <= number:
-            sortedDivs.append({
-                "symbol":symbol,
-                "total":total,
-                "average":avg,
-                "flux_high":change_high,
-                "flux_low":change_low,
-                "number":number
-            })
+            if change_high < 1 and change_low < 1:
+                sortedDivs.append({
+                    "symbol":symbol,
+                    "total":total,
+                    "average":avg,
+                    "flux_high":change_high,
+                    "flux_low":change_low,
+                    "number":number
+                })
 
     sortedDivs.sort(key=lambda x: x["total"], reverse=True)
+
+    for equity in sortedDivs:
+        url = "https://paper-api.alpaca.markets/v2/assets/"+equity["symbol"]
+        headers = {
+            "accept": "application/json",
+            "APCA-API-KEY-ID": config["PAPERKEY"],
+            "APCA-API-SECRET-KEY": config["PAPERSECRET"]
+        }
+        response = requests.get(url, headers=headers)
+        json_response = response.json()
+
     with open("topEquities.json","w+") as file:
         json_write=[]
         for key in range(10):

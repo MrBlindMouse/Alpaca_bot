@@ -5,8 +5,8 @@ from dotenv import dotenv_values
 
 config=dotenv_values(".env")
 
-key = config["KEY"]
-secret = config["SECRET"]
+key = config["PAPERKEY"]
+secret = config["PAPERSECRET"]
 
 
 def main():
