@@ -3,7 +3,7 @@ import requests, json, time, datetime
 
 config=dotenv_values(".env")
 account = {}
-
+status = "running"
 
 def create_order(volume,direction,symbol):
     url="https://paper-api.alpaca.markets/v2/orders"
@@ -113,8 +113,9 @@ def bot():
                         price = float(json_response["minuteBar"]["c"])
                         volume = balance_value/price
                         create_order(volume,"buy",equity["symbol"])
-            print(json.dumps(account,indent=4))
+            print("ALX:"+str(account["ALX"])[:5]+" | BLK:"+str(account["BLK"])[:5]+" | AVGO:"+str(account["AVGO"])[:5]+" | EQIX:"+str(account["EQIX"])[:5]+" | CABO:"+str(account["CABO"])[:5]+" | ESS:"+str(account["ESS"])[:5]+" | NEU:"+str(account["NEU"])[:5]+" | WSO:"+str(account["WSO"])[:5]+" | SPG:"+str(account["SPG"])[:5]+" | AMGN:"+str(account["AMGN"])[:5], end="\r", flush=True)
             time.sleep(60)
+            #print("Running . . .", end="\r", flush=True)
         else:
             tsFormat = "%Y-%m-%dT%H:%M:%S"
             sleepTime = (datetime.datetime.strptime(json_response["next_open"][:-6],tsFormat) - datetime.datetime.strptime(json_response["timestamp"][:-16],tsFormat)).seconds
