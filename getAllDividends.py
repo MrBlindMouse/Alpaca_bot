@@ -14,8 +14,8 @@ def main():
 
     headers = {
         "accept": "application/json",
-        "APCA-API-KEY-ID": "PKQ525I1RV9SFX54A1RX",
-        "APCA-API-SECRET-KEY": "R4SAntnvlUBq6YuNEpkAy1cuX9d3hAjT2cfcUXEE"
+        "APCA-API-KEY-ID": key,
+        "APCA-API-SECRET-KEY": secret
     }
 
     equity_list = []
