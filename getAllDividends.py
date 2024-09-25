@@ -1,8 +1,12 @@
 import requests
 import json
+from dotenv import dotenv_values
 
-key = "PKQ525I1RV9SFX54A1RX"
-secret = "R4SAntnvlUBq6YuNEpkAy1cuX9d3hAjT2cfcUXEE"
+
+config=dotenv_values(".env")
+
+key = config["KEY"]
+secret = config["SECRET"]
 
 
 def main():
