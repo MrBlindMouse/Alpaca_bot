@@ -10,7 +10,7 @@ secret = config["PAPERSECRET"]
 
 
 def main():
-    asstes_url = "https://paper-api.alpaca.markets/v2/assets?status=active"
+    asstes_url = "https://paper-api.alpaca.markets/v2/assets?status=active&asset_class=us_equity"
 
     headers = {
         "accept": "application/json",
@@ -28,7 +28,7 @@ def main():
     div_list=[]
     for entry in equity_list:
         print("Symbol: "+entry)
-        dividend_url = "https://data.alpaca.markets/v1beta1/corporate-actions?symbols="+entry+"&types=cash_dividend&start=2014-09-25&end=2024-09-25&limit=1000&sort=desc"
+        dividend_url = "https://data.alpaca.markets/v1beta1/corporate-actions?symbols="+entry+"&types=cash_dividend&start=2020-01-01&limit=1000&sort=desc"
         response = requests.get(dividend_url, headers=headers)
         json_response = response.json()
         payouts = []
@@ -42,14 +42,25 @@ def main():
                     "date":line["ex_date"],
                     "rate":line["rate"]
                 })
-            print("Total %payout over period: "+str(avg_rate))
-            avg_rate=avg_rate/total_payouts
-            print("Average dividend rate: "+str(avg_rate))
-            print("Number of payouts over period: "+str(total_payouts))
-            div_list.append({
-                "symbol":entry,
-                "dividends":payouts
-            })
+
+            url = "https://data.alpaca.markets/v2/stocks/"+symbol+"/snapshot?feed=iex"
+            headers = {
+                "accept": "application/json",
+                "APCA-API-KEY-ID": "PKQ525I1RV9SFX54A1RX",
+                "APCA-API-SECRET-KEY": "R4SAntnvlUBq6YuNEpkAy1cuX9d3hAjT2cfcUXEE"
+            }
+            response = requests.get(url, headers=headers)
+            json_response = response.json()
+            if "dailyBar" in json_response:
+                price = float(json_response["dailyBar"]["c"])
+                avg_rate=avg_rate/total_payouts
+                print("Average dividend payout: "+str(avg_rate))
+                print("Average dividend yield: "+str(avg_rate/price))
+                div_list.append({
+                    "symbol":entry,
+                    "price":price,
+                    "dividends":payouts
+                })
     
     with open('dividends.json','w+') as file:
         file.write(json.dumps(div_list, indent=4))

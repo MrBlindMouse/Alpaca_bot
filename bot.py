@@ -5,7 +5,7 @@ config=dotenv_values(".env")
 account = {}
 status = "running"
 
-def create_order(volume,direction,symbol):
+def create_order(volume,direction,symbol, type="value"):
     url="https://paper-api.alpaca.markets/v2/orders"
     header = {
         "accept": "application/json",
@@ -13,13 +13,23 @@ def create_order(volume,direction,symbol):
         "APCA-API-KEY-ID": config["PAPERKEY"],
         "APCA-API-SECRET-KEY": config["PAPERSECRET"]
     }
-    payload = {
-        "side":direction,
-        "type":"market",
-        "time_in_force":"day",
-        "symbol":symbol,
-        "qty": str(volume),
-    }
+    if type == "qty":
+        payload = {
+            "side":direction,
+            "type":"market",
+            "time_in_force":"day",
+            "symbol":symbol,
+            "qty": str(volume),
+        }
+    else:
+        payload = {
+            "side":direction,
+            "type":"market",
+            "time_in_force":"day",
+            "symbol":symbol,
+            "notional": str(volume),
+        }
+
     response = requests.post(url, json=payload, headers=header)
     json_response = response.json()
     print(json.dumps(json_response,indent=4))
@@ -69,6 +79,16 @@ def bot():
                 total += float(entry["market_value"])
             balance_value = total/11
             with open("topEquities.json", "r") as file:
+                for entry in balances:
+                    found = False
+                    for equity in json.loads(file.read()):
+                        if equity["symbol"] == entry["symbol"]:
+                            found=True
+                            break
+                    if not found:
+                        sell_volume = entry["qty"]
+                        create_order(sell_volume,"sell",entry["symbol"],"qty")
+
                 for equity in json.loads(file.read()):
                     found = False
                     for entry in balances:
@@ -82,8 +102,8 @@ def bot():
                                 elif diff > account[symbol]:
                                     account[symbol] = diff
                                 elif diff < (account[symbol]*(1-account[symbol])) and diff > float(config["MARGIN"]):
-                                    sell_volume = float(entry["market_value"])*diff
-                                    create_order(sell_volume,"sell",symbol)
+                                    sell_value = float(entry["market_value"])*diff
+                                    create_order(sell_value,"sell",symbol)
                                     account[symbol] = 0
                                 elif diff < float(config["MARGIN"]):
                                     account[symbol] = diff
@@ -95,33 +115,27 @@ def bot():
                                 elif diff > account[symbol]:
                                     account[symbol] = diff
                                 elif diff < (account[symbol]*(1-account[symbol])) and diff > float(config["MARGIN"]):
-                                    buy_volume = float(entry["market_value"])*diff
-                                    create_order(sell_volume,"buy",symbol)
+                                    buy_value = float(entry["market_value"])*diff
+                                    create_order(sell_value,"buy",symbol)
                                     account[symbol] = 0
                                 elif diff < float(config["MARGIN"]):
                                     account[symbol] = diff
+                            break
 
                     if not found:
                         print(equity["symbol"]+" not found")
-                        url = "https://data.alpaca.markets/v2/stocks/"+equity["symbol"]+"/snapshot?feed=iex"
-                        headers = {
-                            "accept": "application/json",
-                            "APCA-API-KEY-ID": config["PAPERKEY"],
-                            "APCA-API-SECRET-KEY": config["PAPERSECRET"]
-                        }
-                        json_response = requests.get(url, headers=headers).json()
-                        price = float(json_response["minuteBar"]["c"])
-                        volume = balance_value/price
-                        create_order(volume,"buy",equity["symbol"])
-            print("ALX:"+str(account["ALX"])[:5]+" | BLK:"+str(account["BLK"])[:5]+" | AVGO:"+str(account["AVGO"])[:5]+" | EQIX:"+str(account["EQIX"])[:5]+" | CABO:"+str(account["CABO"])[:5]+" | ESS:"+str(account["ESS"])[:5]+" | NEU:"+str(account["NEU"])[:5]+" | WSO:"+str(account["WSO"])[:5]+" | SPG:"+str(account["SPG"])[:5]+" | AMGN:"+str(account["AMGN"])[:5], end="\r", flush=True)
+                        create_order(balance_value,"buy",equity["symbol"])
+            print_str = ""
+            for key,value in enumerate(account):
+                print_str += str(key)+":"+str(value)+" | "
+            print(print_str, end="\r", flush=True)
             time.sleep(60)
-            #print("Running . . .", end="\r", flush=True)
+            print("Running . . .", end="\r", flush=True)
         else:
             tsFormat = "%Y-%m-%dT%H:%M:%S"
-            sleepTime = (datetime.datetime.strptime(json_response["next_open"][:-6],tsFormat) - datetime.datetime.strptime(json_response["timestamp"][:-16],tsFormat)).seconds
-            print("Sleep time:"+str(sleepTime))
-            break
-            time.sleep(sleepTime)
+            sleepTime = (datetime.datetime.strptime(json_response["next_open"][:-6],tsFormat) - datetime.datetime.strptime(json_response["timestamp"][:-16],tsFormat)).seconds/3600
+            print("Sleep time:"+str(sleepTime)[:4]+"hrs", end="\r", flush=True)
+            time.sleep(300)
 
 
 
