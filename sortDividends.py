@@ -23,9 +23,14 @@ def main():
         high=0
         low=1000
         start_date = datetime.now()
-        for entry in equity["dividends"]:
+        wma = 0
+        for entry in reversed(equity["dividends"]):
             dateFormat='%Y-%m-%d'
             date = datetime.strptime(entry["date"],dateFormat)
+            if wma == 0:
+                wma = entry["rate"]
+            else:
+                wma = (wma+entry["rate"])/2
             if date < start_date:
                 start_date = date
             total+=entry["rate"]
@@ -35,18 +40,22 @@ def main():
                 low=entry["rate"]
             number+=1
         avg=total/number
+        wma_perc = wma/equity["price"]
         change_high = (high-avg)/avg
         change_low = (avg-low)/avg
         period = get_period(start_date)
-        if equity["price"] != 1:
-            if (period*3) <= number and period > 1:
-                if change_high < 1 and change_low < 1:
-                    sortedDivs.append({
-                        "symbol":symbol,
-                        "period":period,
-                        "flux_high":change_high,
-                        "flux_low":change_low,
-                    })
+        payouts = number/period
+        wyy = (wma_perc*number)/period
+        if (period*3) <= number and period > 1:
+            if change_high < 1 and change_low < 1:
+                sortedDivs.append({
+                    "symbol":symbol,
+                    "annual":wyy,
+                    "payouts":payouts,
+                    "period":period,
+                    "flux_high":change_high,
+                    "flux_low":change_low,
+                })
 
     sortedDivs.sort(key=lambda x: x["annual"], reverse=True)
 

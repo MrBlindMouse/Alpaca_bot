@@ -5,6 +5,10 @@ config=dotenv_values(".env")
 account = {}
 status = "running"
 
+def trunc(value,digits):
+    x = 10**digits
+    return int(value*x)/x
+
 def create_order(volume,direction,symbol, type="value"):
     url="https://paper-api.alpaca.markets/v2/orders"
     header = {
@@ -27,8 +31,9 @@ def create_order(volume,direction,symbol, type="value"):
             "type":"market",
             "time_in_force":"day",
             "symbol":symbol,
-            "notional": str(volume),
+            "notional": str(trunc(volume,2)),
         }
+    print(str(payload))
 
     response = requests.post(url, json=payload, headers=header)
     json_response = response.json()
@@ -79,17 +84,19 @@ def bot():
                 total += float(entry["market_value"])
             balance_value = total/11
             with open("topEquities.json", "r") as file:
+                equity_list = json.loads(file.read())
                 for entry in balances:
                     found = False
-                    for equity in json.loads(file.read()):
+                    for equity in equity_list:
                         if equity["symbol"] == entry["symbol"]:
                             found=True
                             break
                     if not found:
+                        print("Equity not to be trade:"+str(equity["symbol"]))
                         sell_volume = entry["qty"]
                         create_order(sell_volume,"sell",entry["symbol"],"qty")
 
-                for equity in json.loads(file.read()):
+                for equity in equity_list:
                     found = False
                     for entry in balances:
                         if entry["symbol"] == equity["symbol"]:
@@ -127,14 +134,14 @@ def bot():
                         create_order(balance_value,"buy",equity["symbol"])
             print_str = ""
             for key,value in enumerate(account):
-                print_str += str(key)+":"+str(value)+" | "
+                print_str += str(value)+":"+str(account[value])[:5]+" | "
             print(print_str, end="\r", flush=True)
             time.sleep(60)
             print("Running . . .", end="\r", flush=True)
         else:
             tsFormat = "%Y-%m-%dT%H:%M:%S"
-            sleepTime = (datetime.datetime.strptime(json_response["next_open"][:-6],tsFormat) - datetime.datetime.strptime(json_response["timestamp"][:-16],tsFormat)).seconds/3600
-            print("Sleep time:"+str(sleepTime)[:4]+"hrs", end="\r", flush=True)
+            sleepTime = (datetime.datetime.strptime(json_response["next_open"][:19],tsFormat) - datetime.datetime.strptime(json_response["timestamp"][:19],tsFormat)).seconds/3600
+            print("Sleep time:"+str(sleepTime)[:4]+"hrs ~ "+str(json_response["next_open"])[:19], end="\r", flush=True)
             time.sleep(300)
 
 

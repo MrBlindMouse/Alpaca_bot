@@ -43,7 +43,7 @@ def main():
                     "rate":line["rate"]
                 })
 
-            url = "https://data.alpaca.markets/v2/stocks/"+symbol+"/snapshot?feed=iex"
+            url = "https://data.alpaca.markets/v2/stocks/"+entry+"/snapshot?feed=iex"
             headers = {
                 "accept": "application/json",
                 "APCA-API-KEY-ID": "PKQ525I1RV9SFX54A1RX",
