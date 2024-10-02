@@ -136,15 +136,15 @@ def bot():
                 print_str = ""
                 for key,value in enumerate(account):
                     print_str += str(value)+":"+str(account[value])[:5]+" | "
-                print(" "*100, end="\r", flush=True)
+                print(" "*150, end="\r", flush=True)
                 print(print_str, end="\r", flush=True)
                 time.sleep(60)
-                print(" "*100, end="\r", flush=True)
+                print(" "*150, end="\r", flush=True)
                 print("Running . . .", end="\r", flush=True)
             else:
                 tsFormat = "%Y-%m-%dT%H:%M:%S"
                 sleepTime = (datetime.datetime.strptime(json_response["next_open"][:19],tsFormat) - datetime.datetime.strptime(json_response["timestamp"][:19],tsFormat)).seconds/3600
-                print(" "*100, end="\r", flush=True)
+                print(" "*150, end="\r", flush=True)
                 print("Sleep time:"+str(sleepTime)[:4]+"hrs ~ "+str(json_response["next_open"])[:19], end="\r", flush=True)
                 time.sleep(300)
         except:
