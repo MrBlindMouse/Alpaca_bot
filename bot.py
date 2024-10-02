@@ -123,7 +123,7 @@ def bot():
                                     account[symbol] = diff
                                 elif diff < (account[symbol]*(1-account[symbol])) and diff > float(config["MARGIN"]):
                                     buy_value = float(entry["market_value"])*diff
-                                    create_order(sell_value,"buy",symbol)
+                                    create_order(buy_value,"buy",symbol)
                                     account[symbol] = 0
                                 elif diff < float(config["MARGIN"]):
                                     account[symbol] = diff
