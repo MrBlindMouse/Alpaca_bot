@@ -143,10 +143,10 @@ def bot():
                             create_order(balance_value,"buy",equity["symbol"])
                 print_str = ""
                 for key,value in enumerate(account):
-                    print_str += str(value)+":"+str(account[value]*100)[:2]+"% | "
+                    print_str += str(value)+":"+str(trunc(account[value]*100),1)+"% | "
                 print(" "*150, end="\r", flush=True)
                 print(print_str, end="\r", flush=True)
-                time.sleep(60)
+                time.sleep(10)
                 print(" "*150, end="\r", flush=True)
                 print("Running . . .", end="\r", flush=True)
             else:
