@@ -115,6 +115,10 @@ def bot():
                                         account[symbol] = 0
                                     elif diff < float(config["MARGIN"]):
                                         account[symbol] = diff
+                                    elif diff > 0.3:
+                                        sell_value = float(entry["market_value"])*diff
+                                        create_order(sell_value,"sell",symbol)
+                                        account[symbol] = 0
 
                                 else:
                                     diff = (balance_value - float(entry["market_value"]))/balance_value
@@ -128,6 +132,10 @@ def bot():
                                         account[symbol] = 0
                                     elif diff < float(config["MARGIN"]):
                                         account[symbol] = diff
+                                    elif diff > 0.3:
+                                        sell_value = float(entry["market_value"])*diff
+                                        create_order(sell_value,"sell",symbol)
+                                        account[symbol] = 0
                                 break
 
                         if not found:
@@ -135,7 +143,7 @@ def bot():
                             create_order(balance_value,"buy",equity["symbol"])
                 print_str = ""
                 for key,value in enumerate(account):
-                    print_str += str(value)+":"+str(account[value])[:5]+" | "
+                    print_str += str(value)+":"+str(account[value]*100)[:2]+"% | "
                 print(" "*150, end="\r", flush=True)
                 print(print_str, end="\r", flush=True)
                 time.sleep(60)
