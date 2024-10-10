@@ -28,7 +28,7 @@ def main():
     div_list=[]
     for entry in equity_list:
         print("Symbol: "+entry)
-        dividend_url = "https://data.alpaca.markets/v1beta1/corporate-actions?symbols="+entry+"&types=cash_dividend&start=2020-01-01&limit=1000&sort=desc"
+        dividend_url = "https://data.alpaca.markets/v1beta1/corporate-actions?symbols="+entry+"&types=cash_dividend&start=2018-01-01&end=2023-01-01&limit=1000&sort=desc"
         response = requests.get(dividend_url, headers=headers)
         json_response = response.json()
         payouts = []

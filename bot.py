@@ -67,6 +67,7 @@ def get_balances():
 
 def bot():
     global account
+    dayStart = False
     while True:
         try:
             url = "https://paper-api.alpaca.markets/v2/clock"
@@ -78,6 +79,9 @@ def bot():
             response = requests.get(url, headers=headers)
             json_response = response.json()
             if json_response["is_open"]:
+                if not dayStart:
+                    print(str(datetime.date.today))
+                    dayStart = True
                 base = get_account()
                 balances = get_balances()
                 total = float(base["cash"])
@@ -93,7 +97,7 @@ def bot():
                                 found=True
                                 break
                         if not found:
-                            print("Equity not to be trade:"+str(equity["symbol"]))
+                            print("Equity not to be traded:"+str(equity["symbol"]))
                             sell_volume = entry["qty"]
                             create_order(sell_volume,"sell",entry["symbol"],"qty")
 
@@ -145,11 +149,11 @@ def bot():
                 for key,value in enumerate(account):
                     print_str += str(value)+":"+str(trunc(account[value]*100,1))+"% | "
                 print(" "*150, end="\r", flush=True)
-                print(print_str, end="\r", flush=True)
-                time.sleep(10)
-                print(" "*150, end="\r", flush=True)
-                print("Running . . .", end="\r", flush=True)
+                currentTime = datetime.datetime.now()
+                print(currentTime.strftime("%H:%M:%S")+" ~ "+print_str, end="\r", flush=True)
+                time.sleep(1)
             else:
+                dayStart = False
                 tsFormat = "%Y-%m-%dT%H:%M:%S"
                 sleepTime = (datetime.datetime.strptime(json_response["next_open"][:19],tsFormat) - datetime.datetime.strptime(json_response["timestamp"][:19],tsFormat)).seconds/3600
                 print(" "*150, end="\r", flush=True)
