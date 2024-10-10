@@ -34,10 +34,10 @@ def create_order(volume,direction,symbol, type="value"):
             "notional": str(trunc(volume,2)),
         }
     print(" "*100, end="\r", flush=True)
-    print(str(payload))
 
     response = requests.post(url, json=payload, headers=header)
     json_response = response.json()
+    print(json.dumps(json_response,indent=4))
     return json_response
 
 
@@ -87,7 +87,7 @@ def bot():
                 total = float(base["cash"])
                 for entry in balances:
                     total += float(entry["market_value"])
-                balance_value = total/11
+                balance_value = total/10.5
                 with open("topEquities.json", "r") as file:
                     equity_list = json.loads(file.read())
                     for entry in balances:
