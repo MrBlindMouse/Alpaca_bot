@@ -38,7 +38,7 @@ def create_order(volume,direction,symbol, type="value"):
     if str(response.status_code) == '200':
         json_response = response.json()
         status = "open"
-        while status == "open"
+        while status == "open":
             url = "https://paper-api.alpaca.markets/v2/orders/"+str(json_response["id"])
             headers = {"accept": "application/json"}
             response = requests.get(url, headers=headers)
