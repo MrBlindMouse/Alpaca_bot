@@ -33,12 +33,23 @@ def create_order(volume,direction,symbol, type="value"):
             "symbol":symbol,
             "notional": str(trunc(volume,2)),
         }
-    print(" "*100, end="\r", flush=True)
 
     response = requests.post(url, json=payload, headers=header)
-    json_response = response.json()
-    print(json.dumps(json_response,indent=4))
-    return json_response
+    if str(response.status_code) == '200':
+        json_response = response.json()
+        status = "open"
+        while status == "open"
+            url = "https://paper-api.alpaca.markets/v2/orders/"+str(json_response["id"])
+            headers = {"accept": "application/json"}
+            response = requests.get(url, headers=headers)
+            json_response = response.json
+            if json_response["status"] == "filled" or json_response["status"] == "canceled" or json_response["status"] == "expired":
+                status == "closed"
+
+
+        print_str = direction+": "+symbol+"; Price: "+str(json_response["filled_avg_price"])
+        print(" "*100, end="\r", flush=True)
+        print(print_str)
 
 
 def get_account():
@@ -80,7 +91,7 @@ def bot():
             json_response = response.json()
             if json_response["is_open"]:
                 if not dayStart:
-                    print(str(datetime.date.today))
+                    print(str(datetime.date.today()))
                     dayStart = True
                 base = get_account()
                 balances = get_balances()
