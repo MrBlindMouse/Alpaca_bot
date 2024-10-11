@@ -43,6 +43,7 @@ def create_order(volume,direction,symbol, type="value"):
             headers = {"accept": "application/json"}
             response = requests.get(url, headers=headers)
             json_response = response.json()
+            print(response.text)
             if json_response["status"] == "filled" or json_response["status"] == "canceled" or json_response["status"] == "expired":
                 status = "closed"
             else:
