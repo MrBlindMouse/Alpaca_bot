@@ -42,9 +42,11 @@ def create_order(volume,direction,symbol, type="value"):
             url = "https://paper-api.alpaca.markets/v2/orders/"+str(json_response["id"])
             headers = {"accept": "application/json"}
             response = requests.get(url, headers=headers)
-            json_response = response.json
+            json_response = response.json()
             if json_response["status"] == "filled" or json_response["status"] == "canceled" or json_response["status"] == "expired":
                 status == "closed"
+            else:
+                time.sleep(1)
 
 
         print_str = direction+": "+symbol+"; Price: "+str(json_response["filled_avg_price"])
