@@ -44,7 +44,7 @@ def create_order(volume,direction,symbol, type="value"):
             response = requests.get(url, headers=headers)
             json_response = response.json()
             if json_response["status"] == "filled" or json_response["status"] == "canceled" or json_response["status"] == "expired":
-                status == "closed"
+                status = "closed"
             else:
                 time.sleep(1)
 
@@ -93,6 +93,7 @@ def bot():
             json_response = response.json()
             if json_response["is_open"]:
                 if not dayStart:
+                    print(" "*150, end="\r", flush=True)
                     print(str(datetime.date.today()))
                     dayStart = True
                 base = get_account()
