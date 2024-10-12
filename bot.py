@@ -127,16 +127,19 @@ def bot():
                     equity_list = json.loads(file.read())
                     for entry in balances:
                         found = False
-                        for equity in equity_list:
+                        for i in range(int(config["BOTNUMBER"])):
+                            equity = equity_list[i]
                             if equity["symbol"] == entry["symbol"]:
                                 found=True
                                 break
                         if not found:
-                            print("Equity not to be traded:"+str(equity["symbol"]))
-                            sell_volume = entry["qty"]
-                            create_order(sell_volume,"sell",entry["symbol"],"qty")
+                            if float(entry["market_value"]) > 1:
+                                print("Selling Equity not to be traded:"+str(equity["symbol"]))
+                                sell_volume = float(entry["qty"])
+                                create_order(sell_volume,"sell",entry["symbol"],"qty")
 
-                    for equity in equity_list:
+                    for i in range(int(config["BOTNUMBER"])):
+                        equity = equity_list[i]
                         found = False
                         for entry in balances:
                             if entry["symbol"] == equity["symbol"]:
@@ -188,6 +191,13 @@ def bot():
                 print(currentTime.strftime("%H:%M:%S")+" ~ "+print_str, end="\r", flush=True)
                 time.sleep(1)
             else:
+#                if dayStart:
+#                    base = get_account()
+#                    balances = get_balances()
+#                    total = float(base["cash"])
+#                    for entry in balances:
+#                        total += float(entry["market_value"])
+#                    requests(post day end total)
                 dayStart = False
                 tsFormat = "%Y-%m-%dT%H:%M:%S"
                 sleepTime = (datetime.datetime.strptime(json_response["next_open"][:19],tsFormat) - datetime.datetime.strptime(json_response["timestamp"][:19],tsFormat)).seconds/3600

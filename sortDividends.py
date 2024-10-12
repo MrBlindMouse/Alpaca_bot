@@ -5,6 +5,7 @@ config=dotenv_values(".env")
 
 dividends=[]
 sortedDivs = []
+topNumber = 20
 
 def get_period(start):
     end =datetime.now()
@@ -61,7 +62,7 @@ def main():
 
     with open("topEquities.json","w+") as file:
         json_write=[]
-        for key in range(10):
+        for key in range(topNumber):
             json_write.append(sortedDivs[key])
         file.write(json.dumps(json_write,indent=4))
 

@@ -1,5 +1,5 @@
 import requests
-import json
+import json, datetime
 from dotenv import dotenv_values
 
 
@@ -7,10 +7,12 @@ config=dotenv_values(".env")
 
 key = config["PAPERKEY"]
 secret = config["PAPERSECRET"]
+today = datetime.date.today()
+searchPeriod = str(int(today.year)-4)
 
 
 def main():
-    asstes_url = "https://paper-api.alpaca.markets/v2/assets?status=active&asset_class=us_equity"
+    assets_url = "https://paper-api.alpaca.markets/v2/assets?status=active&asset_class=us_equity"
 
     headers = {
         "accept": "application/json",
@@ -19,7 +21,7 @@ def main():
     }
 
     equity_list = []
-    response = requests.get(asstes_url, headers=headers)
+    response = requests.get(assets_url, headers=headers)
     json_response = response.json()
     for line in json_response:
         if line["tradable"]==True and line["fractionable"]==True and line["class"]!="crypto":
@@ -28,7 +30,7 @@ def main():
     div_list=[]
     for entry in equity_list:
         print("Symbol: "+entry)
-        dividend_url = "https://data.alpaca.markets/v1beta1/corporate-actions?symbols="+entry+"&types=cash_dividend&start=2018-01-01&end=2023-01-01&limit=1000&sort=desc"
+        dividend_url = "https://data.alpaca.markets/v1beta1/corporate-actions?symbols="+entry+"&types=cash_dividend&start="+searchPeriod+"-01-01&end="+str(today.year)+"-01-01&limit=1000&sort=desc"
         response = requests.get(dividend_url, headers=headers)
         json_response = response.json()
         payouts = []
