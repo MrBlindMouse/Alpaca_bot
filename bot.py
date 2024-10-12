@@ -4,18 +4,29 @@ import requests, json, time, datetime, traceback
 config=dotenv_values(".env")
 account = {}
 status = "running"
+url_base = ""
+apiKey = ""
+apiSecret = ""
+if config["VERSION"] == "paper":
+    url_base = "https://paper-api.alpaca."
+    apiKey = config["PAPERKEY"]
+    apiSecret = config["PAPERSECRET"]
+elif config["VERSION"] == "real":
+    url_base = "https://api.alpaca."
+    apiKey = config["KEY"]
+    apiSecret = config["SECRET"]
 
 def trunc(value,digits):
     x = 10**digits
     return int(value*x)/x
 
 def create_order(volume,direction,symbol, type="value"):
-    url="https://paper-api.alpaca.markets/v2/orders"
-    header = {
+    url=url_base+"markets/v2/orders"
+    headers = {
         "accept": "application/json",
         "content-type": "application/json",
-        "APCA-API-KEY-ID": config["PAPERKEY"],
-        "APCA-API-SECRET-KEY": config["PAPERSECRET"]
+        "APCA-API-KEY-ID": apiKey,
+        "APCA-API-SECRET-KEY": apiSecret
     }
     if type == "qty":
         payload = {
@@ -34,45 +45,53 @@ def create_order(volume,direction,symbol, type="value"):
             "notional": str(trunc(volume,2)),
         }
 
-    response = requests.post(url, json=payload, headers=header)
+    response = requests.post(url, json=payload, headers=headers)
     if str(response.status_code) == '200':
         json_response = response.json()
         status = "open"
         while status == "open":
-            url = "https://paper-api.alpaca.markets/v2/orders/"+str(json_response["id"])
-            headers = {"accept": "application/json"}
+            url = url_base+"markets/v2/orders/"+str(json_response["id"])
+            headers = {
+                "accept": "application/json",
+                "content-type": "application/json",
+                "APCA-API-KEY-ID": apiKey,
+                "APCA-API-SECRET-KEY": apiSecret
+            }
             response = requests.get(url, headers=headers)
-            json_response = response.json()
-            print(response.text)
-            if json_response["status"] == "filled" or json_response["status"] == "canceled" or json_response["status"] == "expired":
-                status = "closed"
+            if str(response.status_code) == '200':
+                json_response = response.json()
+                if json_response["status"] == "filled" or json_response["status"] == "canceled" or json_response["status"] == "expired":
+                    status = "closed"
+                    print_str = direction+": "+symbol+"; Price: "+str(json_response["filled_avg_price"])
+                    print(" "*100, end="\r", flush=True)
+                    print(print_str)
+                else:
+                    time.sleep(1)
             else:
-                time.sleep(1)
+                status = "close"
+                print(response.text)
 
 
-        print_str = direction+": "+symbol+"; Price: "+str(json_response["filled_avg_price"])
-        print(" "*100, end="\r", flush=True)
-        print(print_str)
 
 
 def get_account():
     global account
-    url = "https://paper-api.alpaca.markets/v2/account"
-    header = {
+    url = url_base+"markets/v2/account"
+    headers = {
         "accept": "application/json",
-        "APCA-API-KEY-ID": config["PAPERKEY"],
-        "APCA-API-SECRET-KEY": config["PAPERSECRET"]
+        "APCA-API-KEY-ID": apiKey,
+        "APCA-API-SECRET-KEY": apiSecret
     }
     response = requests.get(url, headers=header)
     json_response = response.json()
     return json_response
 
 def get_balances():
-    url = "https://paper-api.alpaca.markets/v2/positions"
+    url = url_base+"markets/v2/positions"
     headers = {
         "accept": "application/json",
-        "APCA-API-KEY-ID": config["PAPERKEY"],
-        "APCA-API-SECRET-KEY": config["PAPERSECRET"]
+        "APCA-API-KEY-ID": apiKey,
+        "APCA-API-SECRET-KEY": apiSecret
     }
 
     response = requests.get(url, headers=headers)
@@ -82,13 +101,14 @@ def get_balances():
 def bot():
     global account
     dayStart = False
+    print(config["VERSION"])
     while True:
         try:
-            url = "https://paper-api.alpaca.markets/v2/clock"
+            url = url_base+"markets/v2/clock"
             headers = {
                 "accept": "application/json",
-                "APCA-API-KEY-ID": config["PAPERKEY"],
-                "APCA-API-SECRET-KEY": config["PAPERSECRET"]
+                "APCA-API-KEY-ID": apiKey,
+                "APCA-API-SECRET-KEY": apiSecret
             }
             response = requests.get(url, headers=headers)
             json_response = response.json()
@@ -102,7 +122,7 @@ def bot():
                 total = float(base["cash"])
                 for entry in balances:
                     total += float(entry["market_value"])
-                balance_value = total/10.5
+                balance_value = total/(int(config["BOTNUMBER"])+0.5)
                 with open("topEquities.json", "r") as file:
                     equity_list = json.loads(file.read())
                     for entry in balances:
