@@ -27,6 +27,7 @@ def main():
         if line["tradable"]==True and line["fractionable"]==True and line["class"]!="crypto":
             equity_list.append(line["symbol"])
     print("Number of Equities: "+str(len(equity_list)))
+    print("Period: "+searchPeriod+"-01-01 ~ "+str(today.year)+"-01-01")
     div_list=[]
     for entry in equity_list:
         print("Symbol: "+entry)

@@ -5,17 +5,17 @@ config=dotenv_values(".env")
 
 dividends=[]
 sortedDivs = []
-topNumber = 20
+topNumber = 50
 
-def get_period(start):
-    end =datetime.now()
-    diff = end - start
-    return (diff.days/365)
+def truncate(a,b):
+    x = int(a*10**b)
+    return x/10**b
 
 def main():
     global dividends
     with open("dividends.json", 'r') as file:
         dividends = json.loads(file.read())
+    print("Sorting "+str(len(dividends))+" equities . . .")
     for equity in dividends:
         symbol = equity["symbol"]
         total=0
@@ -23,42 +23,43 @@ def main():
         avg=0
         high=0
         low=1000
-        start_date = datetime.now()
-        wma = 0
-        for entry in reversed(equity["dividends"]):
-            dateFormat='%Y-%m-%d'
-            date = datetime.strptime(entry["date"],dateFormat)
-            if wma == 0:
-                wma = entry["rate"]
-            else:
-                wma = (wma+entry["rate"])/2
-            if date < start_date:
-                start_date = date
-            total+=entry["rate"]
-            if entry["rate"] > high:
-                high=entry["rate"]
-            if entry["rate"] < low:
-                low=entry["rate"]
-            number+=1
-        avg=total/number
-        wma_perc = wma/equity["price"]
-        change_high = (high-avg)/avg
-        change_low = (avg-low)/avg
-        period = get_period(start_date)
-        payouts = number/period
-        wyy = (wma_perc*number)/period
-        if (period*3) <= number and period > 1:
-            if change_high < 1 and change_low < 1:
-                sortedDivs.append({
-                    "symbol":symbol,
-                    "annual":wyy,
-                    "payouts":payouts,
-                    "period":period,
-                    "flux_high":change_high,
-                    "flux_low":change_low,
-                })
+        dateFormat='%Y-%m-%d'
+        end_date = datetime.strptime(equity["dividends"][-1]["date"],dateFormat)
+        start_date = datetime.strptime(equity["dividends"][0]["date"],dateFormat)
+        period = start_date-end_date
+        if start_date != end_date:
+            payoutNumber = len(equity["dividends"])/(period.days/365)
+            wma = 0
+            for entry in reversed(equity["dividends"]):
+                if wma == 0:
+                    wma = entry["rate"]
+                else:
+                    wma = ((wma*payoutNumber)+entry["rate"])/(payoutNumber+1)
+                total+=entry["rate"]
+                if entry["rate"] > high:
+                    high=entry["rate"]
+                if entry["rate"] < low:
+                    low=entry["rate"]
+                number+=1
+                
+            if number >= 6 :
+                avgPayout=total/number
+                wma_perc = wma/equity["price"]
+                change_high = (high-avgPayout)/avgPayout
+                change_low = (avgPayout-low)/avgPayout
+                wyy = (wma_perc*number)/(period.days/365)
+                if change_high < 1 and change_low < 1:
+                    sortedDivs.append({
+                        "symbol":symbol,
+                        "annual%":truncate(wyy*100,2),
+                        "payouts":payoutNumber,
+                        "rate%":truncate((wma_perc)*100,2),
+                        "period":str(truncate(period.days/365,1))+" years",
+                        "flux_high":truncate(change_high*100,2),
+                        "flux_low":truncate(change_low*100,2),
+                    })
 
-    sortedDivs.sort(key=lambda x: x["annual"], reverse=True)
+    sortedDivs.sort(key=lambda x: x["annual%"], reverse=True)
 
     with open("topEquities.json","w+") as file:
         json_write=[]

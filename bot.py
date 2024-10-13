@@ -198,6 +198,9 @@ def bot():
 #                    for entry in balances:
 #                        total += float(entry["market_value"])
 #                    requests(post day end total)
+#                    today = datetime.tadetime.today()
+#                    if int(today.month()) == 1 and int(today.day()) == 1:
+#                        update equities
                 dayStart = False
                 tsFormat = "%Y-%m-%dT%H:%M:%S"
                 sleepTime = (datetime.datetime.strptime(json_response["next_open"][:19],tsFormat) - datetime.datetime.strptime(json_response["timestamp"][:19],tsFormat)).seconds
