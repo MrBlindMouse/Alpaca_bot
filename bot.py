@@ -153,13 +153,13 @@ def bot():
                                     elif diff > account[symbol]:
                                         account[symbol] = diff
                                     elif diff < (account[symbol]*(1-account[symbol])) and diff > float(config["MARGIN"]):
-                                        sell_value = float(entry["market_value"])*diff
+                                        sell_value = balance_value*diff
                                         create_order(sell_value,"sell",symbol)
                                         account[symbol] = 0
                                     elif diff < float(config["MARGIN"]):
                                         account[symbol] = diff
                                     elif diff > 0.3:
-                                        sell_value = float(entry["market_value"])*diff
+                                        sell_value = balance_value*diff
                                         create_order(sell_value,"sell",symbol)
                                         account[symbol] = 0
 
@@ -170,14 +170,14 @@ def bot():
                                     elif diff > account[symbol]:
                                         account[symbol] = diff
                                     elif diff < (account[symbol]*(1-account[symbol])) and diff > float(config["MARGIN"]):
-                                        buy_value = float(entry["market_value"])*diff
+                                        buy_value = balance_value*diff
                                         create_order(buy_value,"buy",symbol)
                                         account[symbol] = 0
                                     elif diff < float(config["MARGIN"]):
                                         account[symbol] = diff
                                     elif diff > 0.3:
-                                        sell_value = float(entry["market_value"])*diff
-                                        create_order(sell_value,"sell",symbol)
+                                        buy_value = balance_value*diff
+                                        create_order(buy_value,"buy",symbol)
                                         account[symbol] = 0
                                 break
 
