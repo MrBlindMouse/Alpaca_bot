@@ -27,11 +27,11 @@ def main():
         if line["tradable"]==True and line["fractionable"]==True and line["class"]!="crypto":
             equity_list.append(line["symbol"])
     print("Number of Equities: "+str(len(equity_list)))
-    print("Period: "+searchPeriod+"-01-01 ~ "+str(today.year)+"-01-01")
+    print("Period: "+searchPeriod+"-01-01 ~ "+str(today)[:10])
     div_list=[]
     for entry in equity_list:
         print("Symbol: "+entry)
-        dividend_url = "https://data.alpaca.markets/v1beta1/corporate-actions?symbols="+entry+"&types=cash_dividend&start="+searchPeriod+"-01-01&end="+str(today.year)+"-01-01&limit=1000&sort=desc"
+        dividend_url = "https://data.alpaca.markets/v1beta1/corporate-actions?symbols="+entry+"&types=cash_dividend&start="+searchPeriod+"-01-01&end="+str(today)[:10]+"&limit=1000&sort=desc"
         response = requests.get(dividend_url, headers=headers)
         json_response = response.json()
         payouts = []

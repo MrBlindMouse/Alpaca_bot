@@ -1,3 +1,5 @@
 .venv
 .env
 test.py
+dividends.json
+topEquities.json

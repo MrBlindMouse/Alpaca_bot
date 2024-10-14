@@ -8,10 +8,12 @@ url_base = ""
 apiKey = ""
 apiSecret = ""
 if config["VERSION"] == "paper":
+    print("Trading Paper Monies . . .")
     url_base = "https://paper-api.alpaca."
     apiKey = config["PAPERKEY"]
     apiSecret = config["PAPERSECRET"]
 elif config["VERSION"] == "real":
+    print("Trading live . . .")
     url_base = "https://api.alpaca."
     apiKey = config["KEY"]
     apiSecret = config["SECRET"]
@@ -101,7 +103,6 @@ def get_balances():
 def bot():
     global account
     dayStart = False
-    print(config["VERSION"])
     while True:
         try:
             url = url_base+"markets/v2/clock"

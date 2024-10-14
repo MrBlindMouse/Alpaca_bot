@@ -24,9 +24,10 @@ def main():
         high=0
         low=1000
         dateFormat='%Y-%m-%d'
-        end_date = datetime.strptime(equity["dividends"][-1]["date"],dateFormat)
-        start_date = datetime.strptime(equity["dividends"][0]["date"],dateFormat)
-        period = start_date-end_date
+        today = datetime.today()
+        end_date = datetime.strptime(str(today.year)+"-01-01",dateFormat)
+        start_date = datetime.strptime(equity["dividends"][-1]["date"],dateFormat)
+        period = end_date-start_date
         if start_date != end_date:
             payoutNumber = len(equity["dividends"])/(period.days/365)
             wma = 0
