@@ -135,6 +135,7 @@ def bot():
                                 break
                         if not found:
                             if float(entry["market_value"]) > 1:
+                                print(" "*150, end="\r", flush=True)
                                 print("Selling Equity not to be traded:"+str(entry["symbol"]))
                                 sell_volume = float(entry["qty"])
                                 create_order(sell_volume,"sell",entry["symbol"],"qty")
@@ -163,7 +164,7 @@ def bot():
                                         create_order(sell_value,"sell",symbol)
                                         account[symbol] = 0
 
-                                else:
+                                elif float(entry["market_value"]) < balance_value:
                                     diff = (balance_value - float(entry["market_value"]))/balance_value
                                     if symbol not in account:
                                         account[symbol] = diff
@@ -182,7 +183,8 @@ def bot():
                                 break
 
                         if not found:
-                            print(equity["symbol"]+" not found")
+                            print(" "*150, end="\r", flush=True)
+                            print(equity["symbol"]+" not found, buying . . .")
                             create_order(balance_value,"buy",equity["symbol"])
                 print_str = ""
                 for key,value in enumerate(account):
