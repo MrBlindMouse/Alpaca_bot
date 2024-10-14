@@ -84,7 +84,7 @@ def get_account():
         "APCA-API-KEY-ID": apiKey,
         "APCA-API-SECRET-KEY": apiSecret
     }
-    response = requests.get(url, headers=header)
+    response = requests.get(url, headers=headers)
     json_response = response.json()
     return json_response
 
