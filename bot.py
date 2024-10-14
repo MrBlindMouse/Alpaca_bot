@@ -203,7 +203,7 @@ def bot():
 #                        total += float(entry["market_value"])
 #                    requests(post day end total)
 #                    today = datetime.datetime.today()
-#                    if int(today.month()) in [1,12] and int(today.day()) in [31,1,2,3,4,5]:
+#                    if int(today.month()) in [1,6] and int(today.day()) in [1,2,3,4,5,6]:
 #                        url = ""
 #                        if str(today.month) == "12":
 #                            url = url_base+"markets/v2/calendar?start="+str(today.year)+"-12-31%2000%3A00%3A00&end="+str(int(today.year)+1)+"-01-07%2000%3A00%3A00"

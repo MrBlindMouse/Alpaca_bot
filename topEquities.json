@@ -1,452 +1,452 @@
 [
     {
         "symbol": "TSLY",
-        "annual%": 182.72,
-        "payouts": 24.60674157303371,
-        "rate%": 7.42,
-        "period": "0.9 years",
-        "flux_high": 40.23,
-        "flux_low": 42.09
+        "annual%": 136.39,
+        "payouts": 19.300155520995336,
+        "rate%": 7.06,
+        "period": "1.7 years",
+        "flux_high": 43.6,
+        "flux_low": 46.93
     },
     {
-        "symbol": "OPI",
-        "annual%": 80.62,
-        "payouts": 4.061196105702364,
-        "rate%": 19.85,
-        "period": "3.9 years",
-        "flux_high": 11.39,
-        "flux_low": 49.36
+        "symbol": "CONY",
+        "annual%": 125.91,
+        "payouts": 11.711229946524064,
+        "rate%": 10.75,
+        "period": "1.0 years",
+        "flux_high": 62.98,
+        "flux_low": 41.31
+    },
+    {
+        "symbol": "AMDY",
+        "annual%": 78.47,
+        "payouts": 11.774193548387096,
+        "rate%": 6.66,
+        "period": "0.9 years",
+        "flux_high": 73.09,
+        "flux_low": 55.48
+    },
+    {
+        "symbol": "NVDY",
+        "annual%": 62.07,
+        "payouts": 12.535353535353535,
+        "rate%": 4.95,
+        "period": "1.3 years",
+        "flux_high": 99.23,
+        "flux_low": 68.46
+    },
+    {
+        "symbol": "KLIP",
+        "annual%": 59.2,
+        "payouts": 12.244408945686901,
+        "rate%": 4.83,
+        "period": "1.7 years",
+        "flux_high": 68.78,
+        "flux_low": 44.83
     },
     {
         "symbol": "SAVE",
-        "annual%": 79.05,
-        "payouts": 12.807017543859649,
-        "rate%": 6.17,
-        "period": "0.9 years",
+        "annual%": 48.64,
+        "payouts": 8.124006359300477,
+        "rate%": 5.98,
+        "period": "1.7 years",
         "flux_high": 0.0,
         "flux_low": 0.0
     },
     {
-        "symbol": "KLIP",
-        "annual%": 74.18,
-        "payouts": 12.920353982300886,
-        "rate%": 5.74,
-        "period": "0.9 years",
-        "flux_high": 39.74,
-        "flux_low": 32.53
+        "symbol": "YMAX",
+        "annual%": 46.32,
+        "payouts": 16.59090909090909,
+        "rate%": 2.79,
+        "period": "0.6 years",
+        "flux_high": 51.88,
+        "flux_low": 57.57
+    },
+    {
+        "symbol": "OPI",
+        "annual%": 42.05,
+        "payouts": 4.0202898550724635,
+        "rate%": 10.46,
+        "period": "4.7 years",
+        "flux_high": 31.77,
+        "flux_low": 97.6
+    },
+    {
+        "symbol": "QDTE",
+        "annual%": 41.88,
+        "payouts": 52.4009900990099,
+        "rate%": 0.79,
+        "period": "0.5 years",
+        "flux_high": 82.24,
+        "flux_low": 70.88
     },
     {
         "symbol": "IEP",
-        "annual%": 48.9,
-        "payouts": 4.222704266088214,
-        "rate%": 11.58,
-        "period": "3.7 years",
-        "flux_high": 6.66,
-        "flux_low": 46.66
+        "annual%": 38.91,
+        "payouts": 4.152694610778443,
+        "rate%": 9.37,
+        "period": "4.5 years",
+        "flux_high": 15.15,
+        "flux_low": 42.42
     },
     {
-        "symbol": "NVDY",
-        "annual%": 35.87,
-        "payouts": 12.283653846153847,
-        "rate%": 2.92,
-        "period": "0.5 years",
-        "flux_high": 32.8,
-        "flux_low": 42.43
+        "symbol": "YMAG",
+        "annual%": 37.82,
+        "payouts": 16.59090909090909,
+        "rate%": 2.27,
+        "period": "0.6 years",
+        "flux_high": 49.4,
+        "flux_low": 63.73
+    },
+    {
+        "symbol": "AMZY",
+        "annual%": 35.94,
+        "payouts": 11.803482587064677,
+        "rate%": 3.04,
+        "period": "1.1 years",
+        "flux_high": 51.76,
+        "flux_low": 42.54
     },
     {
         "symbol": "MED",
-        "annual%": 34.91,
-        "payouts": 3.9905247813411076,
-        "rate%": 8.74,
-        "period": "3.7 years",
+        "annual%": 29.53,
+        "payouts": 3.300180831826401,
+        "rate%": 8.94,
+        "period": "4.5 years",
         "flux_high": 14.0,
         "flux_low": 21.92
     },
     {
+        "symbol": "FEPI",
+        "annual%": 27.67,
+        "payouts": 12.46894409937888,
+        "rate%": 2.21,
+        "period": "0.8 years",
+        "flux_high": 4.65,
+        "flux_low": 5.5
+    },
+    {
         "symbol": "GHI",
-        "annual%": 33.14,
-        "payouts": 5.951086956521738,
-        "rate%": 5.56,
+        "annual%": 26.01,
+        "payouts": 6.129770992366412,
+        "rate%": 4.24,
+        "period": "1.7 years",
+        "flux_high": 92.48,
+        "flux_low": 86.66
+    },
+    {
+        "symbol": "MSFO",
+        "annual%": 25.72,
+        "payouts": 11.711229946524064,
+        "rate%": 2.19,
         "period": "1.0 years",
-        "flux_high": 68.66,
-        "flux_low": 38.24
+        "flux_high": 46.62,
+        "flux_low": 47.53
     },
     {
         "symbol": "PETS",
-        "annual%": 29.12,
-        "payouts": 3.8259958071278826,
-        "rate%": 7.61,
-        "period": "3.9 years",
+        "annual%": 24.05,
+        "payouts": 3.1868451688009314,
+        "rate%": 7.54,
+        "period": "4.7 years",
         "flux_high": 2.5,
         "flux_low": 7.74
     },
     {
+        "symbol": "XDTE",
+        "annual%": 22.28,
+        "payouts": 52.4009900990099,
+        "rate%": 0.42,
+        "period": "0.5 years",
+        "flux_high": 70.17,
+        "flux_low": 90.82
+    },
+    {
+        "symbol": "SPYT",
+        "annual%": 22.09,
+        "payouts": 13.035714285714285,
+        "rate%": 1.69,
+        "period": "0.5 years",
+        "flux_high": 2.22,
+        "flux_low": 2.64
+    },
+    {
         "symbol": "GPMT",
-        "annual%": 27.52,
-        "payouts": 3.492822966507177,
-        "rate%": 7.88,
-        "period": "4.0 years",
-        "flux_high": 74.03,
-        "flux_low": 22.65
-    },
-    {
-        "symbol": "NUS",
-        "annual%": 25.64,
-        "payouts": 4.15954415954416,
-        "rate%": 6.16,
-        "period": "3.8 years",
-        "flux_high": 1.96,
-        "flux_low": 1.96
-    },
-    {
-        "symbol": "DSX",
-        "annual%": 24.9,
-        "payouts": 3.6962025316455693,
-        "rate%": 6.73,
-        "period": "2.1 years",
-        "flux_high": 51.72,
-        "flux_low": 44.82
-    },
-    {
-        "symbol": "TLTW",
-        "annual%": 24.75,
-        "payouts": 12.767489711934155,
-        "rate%": 1.93,
-        "period": "1.3 years",
-        "flux_high": 54.54,
-        "flux_low": 59.24
-    },
-    {
-        "symbol": "GLT",
-        "annual%": 23.74,
-        "payouts": 3.0,
-        "rate%": 7.91,
-        "period": "4.0 years",
-        "flux_high": 2.75,
-        "flux_low": 4.58
-    },
-    {
-        "symbol": "LQDW",
-        "annual%": 23.6,
-        "payouts": 12.767489711934155,
-        "rate%": 1.84,
-        "period": "1.3 years",
-        "flux_high": 89.95,
-        "flux_low": 56.06
-    },
-    {
-        "symbol": "FANH",
-        "annual%": 22.34,
-        "payouts": 2.397810218978102,
-        "rate%": 9.31,
-        "period": "3.7 years",
-        "flux_high": 43.12,
-        "flux_low": 29.64
-    },
-    {
-        "symbol": "CLM",
-        "annual%": 21.64,
-        "payouts": 12.099447513812155,
-        "rate%": 1.78,
-        "period": "3.9 years",
-        "flux_high": 14.18,
-        "flux_low": 24.32
-    },
-    {
-        "symbol": "WBA",
-        "annual%": 21.44,
-        "payouts": 4.133050247699929,
-        "rate%": 5.18,
-        "period": "3.8 years",
-        "flux_high": 1.38,
-        "flux_low": 3.36
-    },
-    {
-        "symbol": "MPW",
-        "annual%": 21.41,
-        "payouts": 3.936017253774263,
-        "rate%": 5.44,
-        "period": "3.8 years",
-        "flux_high": 6.35,
-        "flux_low": 44.98
-    },
-    {
-        "symbol": "ACRE",
-        "annual%": 21.18,
-        "payouts": 3.983628922237381,
-        "rate%": 5.31,
-        "period": "4.0 years",
-        "flux_high": 2.18,
-        "flux_low": 3.64
+        "annual%": 20.64,
+        "payouts": 3.545714285714286,
+        "rate%": 5.82,
+        "period": "4.7 years",
+        "flux_high": 90.29,
+        "flux_low": 78.85
     },
     {
         "symbol": "RC",
-        "annual%": 21.05,
-        "payouts": 4.522594752186589,
-        "rate%": 4.65,
-        "period": "3.7 years",
-        "flux_high": 23.52,
-        "flux_low": 70.58
-    },
-    {
-        "symbol": "AFCG",
-        "annual%": 20.07,
-        "payouts": 3.9170731707317072,
-        "rate%": 5.12,
-        "period": "2.8 years",
-        "flux_high": 13.65,
-        "flux_low": 26.93
-    },
-    {
-        "symbol": "TCPC",
-        "annual%": 19.92,
-        "payouts": 4.4769119769119765,
-        "rate%": 4.45,
-        "period": "3.7 years",
-        "flux_high": 83.02,
-        "flux_low": 84.48
+        "annual%": 19.52,
+        "payouts": 4.400241109101868,
+        "rate%": 4.43,
+        "period": "4.5 years",
+        "flux_high": 25.74,
+        "flux_low": 70.05
     },
     {
         "symbol": "ORC",
-        "annual%": 19.6,
-        "payouts": 12.23463687150838,
-        "rate%": 1.6,
-        "period": "3.9 years",
-        "flux_high": 73.87,
-        "flux_low": 65.22
+        "annual%": 18.88,
+        "payouts": 12.102966841186737,
+        "rate%": 1.56,
+        "period": "4.7 years",
+        "flux_high": 65.9,
+        "flux_low": 66.81
     },
     {
-        "symbol": "GNL",
-        "annual%": 19.34,
-        "payouts": 4.022038567493113,
-        "rate%": 4.8,
-        "period": "3.9 years",
-        "flux_high": 31.34,
-        "flux_low": 12.68
+        "symbol": "TCPC",
+        "annual%": 18.79,
+        "payouts": 4.363419007770473,
+        "rate%": 4.3,
+        "period": "4.5 years",
+        "flux_high": 81.53,
+        "flux_low": 84.61
     },
     {
-        "symbol": "HPP",
-        "annual%": 19.01,
-        "payouts": 3.6948662328271875,
-        "rate%": 5.14,
-        "period": "3.7 years",
-        "flux_high": 3.7,
-        "flux_low": 48.14
+        "symbol": "CLM",
+        "annual%": 18.69,
+        "payouts": 11.99135446685879,
+        "rate%": 1.55,
+        "period": "4.7 years",
+        "flux_high": 20.48,
+        "flux_low": 29.38
     },
     {
-        "symbol": "ACP",
-        "annual%": 18.1,
-        "payouts": 11.8719723183391,
-        "rate%": 1.52,
-        "period": "3.9 years",
-        "flux_high": 16.04,
-        "flux_low": 3.29
+        "symbol": "ACRE",
+        "annual%": 18.43,
+        "payouts": 3.9560752994865944,
+        "rate%": 4.65,
+        "period": "4.8 years",
+        "flux_high": 5.38,
+        "flux_low": 24.72
     },
     {
         "symbol": "OXLC",
-        "annual%": 17.9,
-        "payouts": 12.116182572614107,
-        "rate%": 1.47,
-        "period": "3.9 years",
-        "flux_high": 68.09,
-        "flux_low": 15.95
+        "annual%": 18.41,
+        "payouts": 12.00519330640508,
+        "rate%": 1.53,
+        "period": "4.7 years",
+        "flux_high": 67.1,
+        "flux_low": 16.44
+    },
+    {
+        "symbol": "AFCG",
+        "annual%": 18.32,
+        "payouts": 4.173018292682927,
+        "rate%": 4.39,
+        "period": "3.5 years",
+        "flux_high": 19.82,
+        "flux_low": 67.9
+    },
+    {
+        "symbol": "DSX",
+        "annual%": 18.29,
+        "payouts": 3.7279480037140202,
+        "rate%": 4.9,
+        "period": "2.9 years",
+        "flux_high": 80.59,
+        "flux_low": 50.74
+    },
+    {
+        "symbol": "ACP",
+        "annual%": 18.2,
+        "payouts": 12.012124711316398,
+        "rate%": 1.51,
+        "period": "4.7 years",
+        "flux_high": 16.72,
+        "flux_low": 2.73
+    },
+    {
+        "symbol": "TLTW",
+        "annual%": 17.77,
+        "payouts": 12.276843467011643,
+        "rate%": 1.44,
+        "period": "2.1 years",
+        "flux_high": 85.9,
+        "flux_low": 50.97
     },
     {
         "symbol": "SVOL",
-        "annual%": 17.69,
-        "payouts": 12.372881355932204,
-        "rate%": 1.42,
-        "period": "2.2 years",
-        "flux_high": 21.57,
-        "flux_low": 20.25
+        "annual%": 16.93,
+        "payouts": 12.133872416891284,
+        "rate%": 1.39,
+        "period": "3.0 years",
+        "flux_high": 23.77,
+        "flux_low": 18.8
     },
     {
-        "symbol": "ARI",
-        "annual%": 16.41,
-        "payouts": 3.991797676008202,
-        "rate%": 4.11,
-        "period": "4.0 years",
-        "flux_high": 27.77,
-        "flux_low": 2.77
+        "symbol": "GNL",
+        "annual%": 16.74,
+        "payouts": 3.987924094307073,
+        "rate%": 4.19,
+        "period": "4.7 years",
+        "flux_high": 36.89,
+        "flux_low": 29.3
     },
     {
-        "symbol": "RA",
-        "annual%": 16.27,
-        "payouts": 12.099447513812155,
-        "rate%": 1.34,
-        "period": "3.9 years",
-        "flux_high": 2.61,
-        "flux_low": 39.15
-    },
-    {
-        "symbol": "AMBP",
-        "annual%": 15.39,
-        "payouts": 4.506172839506173,
-        "rate%": 3.41,
-        "period": "1.5 years",
-        "flux_high": 78.34,
-        "flux_low": 24.2
-    },
-    {
-        "symbol": "BGS",
-        "annual%": 15.27,
-        "payouts": 3.9905247813411076,
-        "rate%": 3.82,
-        "period": "3.7 years",
-        "flux_high": 19.04,
-        "flux_low": 52.38
+        "symbol": "MPW",
+        "annual%": 16.73,
+        "payouts": 4.132896305125149,
+        "rate%": 4.04,
+        "period": "4.5 years",
+        "flux_high": 19.26,
+        "flux_low": 67.09
     },
     {
         "symbol": "RWAY",
-        "annual%": 15.21,
-        "payouts": 4.174078780177891,
-        "rate%": 3.64,
-        "period": "2.1 years",
-        "flux_high": 26.6,
-        "flux_low": 31.19
+        "annual%": 16.34,
+        "payouts": 4.078212290502793,
+        "rate%": 4.0,
+        "period": "2.9 years",
+        "flux_high": 21.03,
+        "flux_low": 35.62
     },
     {
-        "symbol": "GSBD",
-        "annual%": 14.93,
-        "payouts": 4.788629737609329,
-        "rate%": 3.11,
-        "period": "3.7 years",
-        "flux_high": 17.39,
-        "flux_low": 86.95
+        "symbol": "WBA",
+        "annual%": 16.3,
+        "payouts": 4.079411764705882,
+        "rate%": 3.99,
+        "period": "4.6 years",
+        "flux_high": 9.54,
+        "flux_low": 42.94
     },
     {
-        "symbol": "KREF",
-        "annual%": 14.78,
-        "payouts": 3.991797676008202,
-        "rate%": 3.7,
-        "period": "4.0 years",
-        "flux_high": 0.0,
-        "flux_low": 0.0
-    },
-    {
-        "symbol": "CION",
-        "annual%": 14.58,
-        "payouts": 6.227034120734908,
-        "rate%": 2.34,
-        "period": "2.0 years",
-        "flux_high": 20.76,
-        "flux_low": 82.24
-    },
-    {
-        "symbol": "NHTC",
-        "annual%": 14.56,
-        "payouts": 4.150675195451315,
-        "rate%": 3.5,
-        "period": "3.8 years",
-        "flux_high": 0.0,
-        "flux_low": 0.0
+        "symbol": "ARI",
+        "annual%": 16.11,
+        "payouts": 3.962857142857143,
+        "rate%": 4.06,
+        "period": "4.7 years",
+        "flux_high": 28.34,
+        "flux_low": 2.34
     },
     {
         "symbol": "PTMN",
-        "annual%": 14.34,
-        "payouts": 4.636556104446012,
-        "rate%": 3.09,
-        "period": "3.8 years",
-        "flux_high": 91.96,
-        "flux_low": 83.3
+        "annual%": 15.44,
+        "payouts": 4.498239436619718,
+        "rate%": 3.43,
+        "period": "4.6 years",
+        "flux_high": 69.67,
+        "flux_low": 85.24
     },
     {
-        "symbol": "KNOP",
-        "annual%": 14.3,
-        "payouts": 4.078212290502793,
+        "symbol": "NUS",
+        "annual%": 15.35,
+        "payouts": 4.1011235955056184,
+        "rate%": 3.74,
+        "period": "4.6 years",
+        "flux_high": 17.61,
+        "flux_low": 81.9
+    },
+    {
+        "symbol": "GSBD",
+        "annual%": 14.86,
+        "payouts": 4.620253164556962,
+        "rate%": 3.21,
+        "period": "4.5 years",
+        "flux_high": 14.54,
+        "flux_low": 87.27
+    },
+    {
+        "symbol": "NHTC",
+        "annual%": 14.36,
+        "payouts": 4.093860684769775,
         "rate%": 3.5,
-        "period": "3.9 years",
-        "flux_high": 31.14,
-        "flux_low": 93.44
+        "period": "4.6 years",
+        "flux_high": 0.0,
+        "flux_low": 0.0
+    },
+    {
+        "symbol": "QQQI",
+        "annual%": 14.31,
+        "payouts": 12.372881355932202,
+        "rate%": 1.15,
+        "period": "0.6 years",
+        "flux_high": 5.48,
+        "flux_low": 3.94
     },
     {
         "symbol": "TRIN",
-        "annual%": 14.28,
-        "payouts": 3.989071038251366,
-        "rate%": 3.58,
-        "period": "3.0 years",
-        "flux_high": 35.55,
-        "flux_low": 40.0
+        "annual%": 14.31,
+        "payouts": 3.9530685920577615,
+        "rate%": 3.62,
+        "period": "3.7 years",
+        "flux_high": 32.22,
+        "flux_low": 41.47
     },
     {
-        "symbol": "PSEC",
-        "annual%": 14.18,
-        "payouts": 11.983584131326948,
-        "rate%": 1.18,
-        "period": "4.0 years",
-        "flux_high": 0.0,
-        "flux_low": 0.0
+        "symbol": "TRTX",
+        "annual%": 14.14,
+        "payouts": 4.370011402508552,
+        "rate%": 3.23,
+        "period": "4.8 years",
+        "flux_high": 55.4,
+        "flux_low": 27.71
     },
     {
         "symbol": "BRSP",
-        "annual%": 14.11,
-        "payouts": 3.9847161572052405,
-        "rate%": 3.54,
-        "period": "2.5 years",
-        "flux_high": 6.95,
-        "flux_low": 25.13
-    },
-    {
-        "symbol": "HE",
-        "annual%": 14.1,
-        "payouts": 3.8940256045519206,
-        "rate%": 3.62,
-        "period": "3.8 years",
-        "flux_high": 4.65,
-        "flux_low": 4.06
+        "annual%": 14.12,
+        "payouts": 3.944305901911887,
+        "rate%": 3.58,
+        "period": "3.2 years",
+        "flux_high": 5.26,
+        "flux_low": 26.31
     },
     {
         "symbol": "AGNC",
-        "annual%": 14.06,
-        "payouts": 11.975393028024605,
-        "rate%": 1.17,
-        "period": "4.0 years",
-        "flux_high": 29.72,
-        "flux_low": 2.7
+        "annual%": 14.09,
+        "payouts": 12.097142857142858,
+        "rate%": 1.16,
+        "period": "4.7 years",
+        "flux_high": 30.33,
+        "flux_low": 2.24
     },
     {
-        "symbol": "RYLD",
-        "annual%": 14.04,
-        "payouts": 11.904927133934768,
-        "rate%": 1.17,
-        "period": "3.9 years",
-        "flux_high": 45.08,
-        "flux_low": 24.99
+        "symbol": "CION",
+        "annual%": 14.03,
+        "payouts": 6.611058150619638,
+        "rate%": 2.12,
+        "period": "2.8 years",
+        "flux_high": 37.62,
+        "flux_low": 80.88
     },
     {
-        "symbol": "BXMT",
-        "annual%": 13.97,
-        "payouts": 3.991797676008202,
-        "rate%": 3.49,
-        "period": "4.0 years",
+        "symbol": "PSEC",
+        "annual%": 14.02,
+        "payouts": 11.895368782161235,
+        "rate%": 1.17,
+        "period": "4.7 years",
         "flux_high": 0.0,
         "flux_low": 0.0
     },
     {
-        "symbol": "EFC",
-        "annual%": 13.82,
-        "payouts": 12.23463687150838,
-        "rate%": 1.12,
-        "period": "3.9 years",
-        "flux_high": 12.32,
-        "flux_low": 55.07
-    },
-    {
-        "symbol": "MORT",
-        "annual%": 13.66,
-        "payouts": 4.262773722627737,
-        "rate%": 3.2,
+        "symbol": "BRW",
+        "annual%": 13.97,
+        "payouts": 12.741818181818182,
+        "rate%": 1.09,
         "period": "3.7 years",
-        "flux_high": 30.14,
-        "flux_low": 20.96
+        "flux_high": 66.51,
+        "flux_low": 90.21
     },
     {
-        "symbol": "LEG",
-        "annual%": 13.59,
-        "payouts": 3.9388489208633093,
-        "rate%": 3.45,
-        "period": "3.8 years",
-        "flux_high": 8.49,
-        "flux_low": 5.66
+        "symbol": "BXMT",
+        "annual%": 13.83,
+        "payouts": 3.962857142857143,
+        "rate%": 3.49,
+        "period": "4.7 years",
+        "flux_high": 0.0,
+        "flux_low": 0.0
+    },
+    {
+        "symbol": "NEP",
+        "annual%": 13.27,
+        "payouts": 4.048453006421482,
+        "rate%": 3.27,
+        "period": "4.6 years",
+        "flux_high": 23.64,
+        "flux_low": 26.9
     }
 ]

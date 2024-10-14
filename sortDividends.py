@@ -25,7 +25,7 @@ def main():
         low=1000
         dateFormat='%Y-%m-%d'
         today = datetime.today()
-        end_date = datetime.strptime(str(today.year)+"-01-01",dateFormat)
+        end_date = today
         start_date = datetime.strptime(equity["dividends"][-1]["date"],dateFormat)
         period = end_date-start_date
         if start_date != end_date:
@@ -43,7 +43,7 @@ def main():
                     low=entry["rate"]
                 number+=1
                 
-            if number >= 6 :
+            if payoutNumber > 3 and number > 6:
                 avgPayout=total/number
                 wma_perc = wma/equity["price"]
                 change_high = (high-avgPayout)/avgPayout
