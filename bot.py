@@ -135,7 +135,7 @@ def bot():
                                 break
                         if not found:
                             if float(entry["market_value"]) > 1:
-                                print("Selling Equity not to be traded:"+str(equity["symbol"]))
+                                print("Selling Equity not to be traded:"+str(entry["symbol"]))
                                 sell_volume = float(entry["qty"])
                                 create_order(sell_volume,"sell",entry["symbol"],"qty")
 
