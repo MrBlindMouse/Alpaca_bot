@@ -191,6 +191,7 @@ def bot():
                 print(currentTime.strftime("%H:%M:%S")+" ~ "+print_str, end="\r", flush=True)
                 time.sleep(1)
             else:
+                tsFormat = "%Y-%m-%dT%H:%M:%S"
 #                if dayStart:
 #                    base = get_account()
 #                    balances = get_balances()
@@ -198,11 +199,25 @@ def bot():
 #                    for entry in balances:
 #                        total += float(entry["market_value"])
 #                    requests(post day end total)
-#                    today = datetime.tadetime.today()
-#                    if int(today.month()) == 1 and int(today.day()) == 1:
-#                        update equities
+#                    today = datetime.datetime.today()
+#                    if int(today.month()) in [1,12] and int(today.day()) in [31,1,2,3,4,5]:
+#                        url = ""
+#                        if str(today.month) == "12":
+#                            url = url_base+"markets/v2/calendar?start="+str(today.year)+"-12-31%2000%3A00%3A00&end="+str(int(today.year)+1)+"-01-07%2000%3A00%3A00"
+#                        elif str(today.month) == "1":
+#                            url = url_base+"markets/v2/calendar?start="+str(int(today.year)-1)+"-12-31%2000%3A00%3A00&end="+str(today.year)+"-01-07%2000%3A00%3A00"
+#                        headers = {
+#                            "accept": "application/json",
+#                            "APCA-API-KEY-ID": apiKey,
+#                            "APCA-API-SECRET-KEY": apiSecret
+#                        }
+#                        response = requests.get(url, headers=headers)
+#                        json_response = response.json()
+#                        update_date = datetime.datetime.strptime(json_response[0]["date"][:19],tsFormat)
+#                        if update_date[:10] == today[:10]:
+#                            update dividends
+#                            sort dividends
                 dayStart = False
-                tsFormat = "%Y-%m-%dT%H:%M:%S"
                 sleepTime = (datetime.datetime.strptime(json_response["next_open"][:19],tsFormat) - datetime.datetime.strptime(json_response["timestamp"][:19],tsFormat)).seconds
                 print(" "*150, end="\r", flush=True)
                 print("Sleep timer: "+str(sleepTime/3600)[:4]+"hrs ~ "+str(json_response["next_open"])[:19], end="\r", flush=True)
