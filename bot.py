@@ -7,6 +7,7 @@ account = {}
 status = {
     "trading":"close",
     "checkinTS":0,
+    "dt_count":0
     }
 url_base = ""
 apiKey = ""
@@ -28,16 +29,15 @@ def trunc(value,digits):
     return int(value*x)/x
 
 def bmd_logger(function):
-    def exception_handler():
-        result = None
+    def exception_handler(*args, **kwargs):
         try:
-            result = function()
+            return function(*args, **kwargs)
         except:
             print(" "*150, end="\r", flush=True)
             print("Exception raised during "+function.__name__, flush=True)
             exc_type, exc_value, exc_traceback = sys.exc_info()
             message = traceback.extract_tb(exc_traceback)
-            post_message = "Exception raised during "+function.__name__+'<br>'+'\n'
+            post_message = "Exception raised during "+function.__name__+'<br>'
             for line in message.format():
                 post_message += line+'<br>'
             payload = {
@@ -56,8 +56,9 @@ def bmd_logger(function):
             except Exception as c:
                 print("BMD logger server down . . .")
                 print(str(c))
+                print('Original exception: ')
+                print(post_message)
             time.sleep(10)
-        return result
     return exception_handler
 
 @bmd_logger
@@ -275,24 +276,24 @@ def bot():
     response = requests.get(url, headers=headers)
     server_time = response.json()
     current_server_time = datetime.datetime.strptime(server_time["timestamp"][:19],tsFormat)
+    #Check server status and set margin accordingly
     if server_time["is_open"]:
         margin = float(config["MARGIN"])
         if status["trading"] != "open":
             print(" "*150, end="\r", flush=True)
             print(str(datetime.date.today())+": Market Open", flush=True)
             status["trading"] = "open"
-    elif current_server_time.weekday() >= 0 and current_server_time.weekday() <= 4 and current_server_time.hour > 4  and current_server_time.hour < 20:
-        print(str(current_server_time.weekday()))
+    elif current_server_time.weekday() >= 0 and current_server_time.weekday() <= 4 and current_server_time.hour >= 4  and current_server_time.hour < 20:
         if status["trading"] != "extended":
             print(" "*150, end="\r", flush=True)
-            print(str(datetime.date.today())+":Market Close, trading extended hrs ~ Next open: "+str(server_time["next_open"])[:19], flush=True)
+            print(str(current_server_time)+":Market Close, trading extended hrs ~ Next open: "+str(server_time["next_open"])[:19], flush=True)
             status["trading"] = "extended"
             day_end()
         margin = float(config["MARGIN"]) *1.5
     else:
         if status["trading"] != "closed":
             print(" "*150, end="\r", flush=True)
-            print(str(datetime.date.today())+":Market Close ~ Next open: "+str(server_time["next_open"])[:19], flush=True)
+            print(str(current_server_time)+":Market Close ~ Next open: "+str(server_time["next_open"])[:19], flush=True)
             status["trading"] = "closed"
             account_symbols = list(account.keys())
             account_values = list(account.values())
@@ -302,30 +303,51 @@ def bot():
                         delete[account[account_symbols[i]]]
         time.sleep(120)
 
-#                    base = get_account()
-#                    balances = get_balances()
-#                    total = float(base["cash"])
-#                    for entry in balances:
-#                        total += float(entry["market_value"])
-#                    requests(post day end total)
-#                    today = datetime.datetime.today()
-#                    if int(today.month()) in [1,6] and int(today.day()) == 1:
-#                        url = url_base+"markets/v2/calendar?start="+str(today.year)+"-"+str(today.month)+"-1%2000%3A00%3A00&end="+str(today.year)+"-"+str(today.month)+"-01-06%2000%3A00%3A00"
-#                        headers = {
-#                            "accept": "application/json",
-#                            "APCA-API-KEY-ID": apiKey,
-#                            "APCA-API-SECRET-KEY": apiSecret
-#                        }
-#                        response = requests.get(url, headers=headers)
-#                        json_response = response.json()
-#                        update_date = datetime.datetime.strptime(json_response[0]["date"][:19],tsFormat)
-#                        if update_date[:10] == today[:10]:
-#                            update dividends
-#                            sort dividends
-
+        #Start equity list update on 1st Jan and Jun between 20:00 and 20:10
+        if int(current_server_time.month) in [1,6] and int(current_server_time.day) == 1 and int(current_server_time.hour) == 20 and int(current_server_time.minute) < 10:
+            checkin(ts,status["updating"])
+            getAllDividends.main()
+            sortDividends.main()
+            
 
     if status["trading"] != "closed":
         base = get_account()
+        dt_count = int(base["daytrade_count"])
+        if dt_count == 0 and status["dt_count"] != dt_count:
+            status["dt_count"] = dt_count
+        elif dt_count == 1:
+#            margin = margin+0.01
+            status["dt_count"] = dt_count
+        elif dt_count == 2:
+#            margin = margin + 0.03
+            if status["dt_count"] < dt_count:
+                payload = {
+                    "code": "1",
+                    "app": "Alpaca",
+                    "snippet": "Warning, daytrade count(2) is climbing!"
+                    }
+                requests.post("https://www.bmd-studios.com/log", json=payload)
+            status["dt_count"] = dt_count
+        elif dt_count == 3:
+#            margin = margin + 0.05
+            if status["dt_count"] < dt_count:
+                payload = {
+                    "code": "3",
+                    "app": "Alpaca",
+                    "snippet": "Warning, daytrade count(3) is critical!"
+                    }
+                requests.post("https://www.bmd-studios.com/log", json=payload)
+            status["dt_count"] = dt_count
+        elif dt_count == 4:
+#            margin = margin + 0.07
+            if status["dt_count"] < dt_count:
+                payload = {
+                    "code": "3",
+                    "app": "Alpaca",
+                    "snippet": "Too late, we dead! DT count is 4 . . .<br>Now we need R500k to trade . . .<br>Do we have R500k already?"
+                    }
+                requests.post("https://www.bmd-studios.com/log", json=payload)
+            status["dt_count"] = dt_count
         balances = get_balances()
         total = float(base["cash"])
         for entry in balances:
@@ -473,7 +495,6 @@ def bot():
         print(" "*150, end="\r", flush=True)
         currentTime = datetime.datetime.now()
         print(currentTime.strftime("%H:%M:%S")+" ~ "+print_str, end="\r", flush=True)
-        time.sleep(1)
 
 
 if __name__=="__main__":

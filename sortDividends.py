@@ -1,18 +1,17 @@
 from datetime import datetime
-import json, requests
-from dotenv import dotenv_values
-config=dotenv_values(".env")
+import json
 
-dividends=[]
-sortedDivs = []
-topNumber = 50
 
 def truncate(a,b):
     x = int(a*10**b)
     return x/10**b
 
-def main():
-    global dividends
+def sort():
+
+    dividends=[]
+    sortedDivs = []
+    topNumber = 50
+
     with open("dividends.json", 'r') as file:
         dividends = json.loads(file.read())
     print("Sorting "+str(len(dividends))+" equities . . .")
@@ -70,4 +69,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    sort()

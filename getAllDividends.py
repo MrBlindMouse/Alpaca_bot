@@ -2,17 +2,23 @@ import requests
 import json, datetime
 from dotenv import dotenv_values
 
+def start():
+    config=dotenv_values(".env")
 
-config=dotenv_values(".env")
+    if config["VERSION"] == "paper":
+        url_base = "https://paper-api.alpaca."
+        key = config["PAPERKEY"]
+        secret = config["PAPERSECRET"]
+    elif config["VERSION"] == "real":
+        url_base = "https://api.alpaca."
+        key = config["KEY"]
+        secret = config["SECRET"]
 
-key = config["PAPERKEY"]
-secret = config["PAPERSECRET"]
-today = datetime.date.today()
-searchPeriod = str(int(today.year)-4)
 
+    today = datetime.date.today()
+    searchPeriod = str(int(today.year)-4)
 
-def main():
-    assets_url = "https://paper-api.alpaca.markets/v2/assets?status=active&asset_class=us_equity"
+    assets_url = url_base+"markets/v2/assets?status=active&asset_class=us_equity"
 
     headers = {
         "accept": "application/json",
@@ -31,7 +37,7 @@ def main():
     div_list=[]
     for entry in equity_list:
         print("Symbol: "+entry)
-        dividend_url = "https://data.alpaca.markets/v1beta1/corporate-actions?symbols="+entry+"&types=cash_dividend&start="+searchPeriod+"-01-01&end="+str(today)[:10]+"&limit=1000&sort=desc"
+        dividend_url = url_base+"markets/v1beta1/corporate-actions?symbols="+entry+"&types=cash_dividend&start="+searchPeriod+"-01-01&end="+str(today)[:10]+"&limit=1000&sort=desc"
         response = requests.get(dividend_url, headers=headers)
         json_response = response.json()
         payouts = []
@@ -46,7 +52,7 @@ def main():
                     "rate":line["rate"]
                 })
 
-            url = "https://data.alpaca.markets/v2/stocks/"+entry+"/snapshot?feed=iex"
+            url = url_base+"markets/v2/stocks/"+entry+"/snapshot?feed=iex"
             headers = {
                 "accept": "application/json",
                 "APCA-API-KEY-ID": "PKQ525I1RV9SFX54A1RX",
@@ -70,4 +76,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    start()
