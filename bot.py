@@ -316,10 +316,10 @@ def bot():
         if dt_count == 0 and status["dt_count"] != dt_count:
             status["dt_count"] = dt_count
         elif dt_count == 1:
-#            margin = margin+0.01
+            margin = margin+0.01
             status["dt_count"] = dt_count
         elif dt_count == 2:
-#            margin = margin + 0.03
+            margin = margin + 0.03
             if status["dt_count"] < dt_count:
                 payload = {
                     "code": "1",
@@ -329,7 +329,7 @@ def bot():
                 requests.post("https://www.bmd-studios.com/log", json=payload)
             status["dt_count"] = dt_count
         elif dt_count == 3:
-#            margin = margin + 0.05
+            margin = margin + 0.05
             if status["dt_count"] < dt_count:
                 payload = {
                     "code": "3",
@@ -339,7 +339,7 @@ def bot():
                 requests.post("https://www.bmd-studios.com/log", json=payload)
             status["dt_count"] = dt_count
         elif dt_count == 4:
-#            margin = margin + 0.07
+            margin = margin + 0.07
             if status["dt_count"] < dt_count:
                 payload = {
                     "code": "3",
