@@ -1,6 +1,7 @@
 from dotenv import dotenv_values
 import requests, json, time, datetime, traceback
 import traceback, sys
+import getAllDividends, sortDividends
 
 config=dotenv_values(".env")
 account = {}
@@ -193,8 +194,8 @@ def day_end():
     balances = get_balances()
     base = get_account()
     cash = float(base["cash"])
-    cost = cash
-    equity = cash
+    cost = cash     #Equity already includes cash, but cost basis does not
+    equity = 0
     investment = 0
 
     for entry in balances:
@@ -287,8 +288,9 @@ def bot():
         if status["trading"] != "extended":
             print(" "*150, end="\r", flush=True)
             print(str(current_server_time)+":Market Close, trading extended hrs ~ Next open: "+str(server_time["next_open"])[:19], flush=True)
+            if status["trading"] == "open":
+                day_end()
             status["trading"] = "extended"
-            day_end()
         margin = float(config["MARGIN"]) *1.5
     else:
         if status["trading"] != "closed":
