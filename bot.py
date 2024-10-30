@@ -420,7 +420,7 @@ def bot():
                                 
                                 if diff > account[symbol]:
                                     account[symbol] = diff
-                                elif diff < (account[symbol]*(1-account[symbol])) and diff > margin:
+                                elif diff < (account[symbol]*(1-((account[symbol]/2)+(margin/2)))) and diff > margin:
                                     sell_value = balance_value*diff
                                     result = create_order(sell_value,"sell",symbol,entry["current_price"], status["trading"])
                                     if result == 'done':
@@ -451,7 +451,7 @@ def bot():
                                 
                                 if diff > account[symbol]:
                                     account[symbol] = diff
-                                elif diff < (account[symbol]*(1-account[symbol])) and diff > margin:
+                                elif diff < (account[symbol]*(1-((account[symbol]/2)+(margin/2)))) and diff > margin:
                                     buy_value = balance_value*diff
                                     result = create_order(buy_value,"buy",symbol,entry["current_price"], status["trading"])
                                     if result == 'done':
@@ -498,7 +498,10 @@ def bot():
             if issubclass(type(account_values[i]),str):
                 print_str += str(account_symbols[i])+":limit | "
             else:
-                print_str += str(account_symbols[i])+":"+str(trunc(account_values[i]*100,1))+"% | "
+                if account_symbols[i] == 'dt_count':
+                    print_str += str(account_symbols[i])+":"+str(trunc(account_values[i]*100,1))+" | "
+                else:
+                    print_str += str(account_symbols[i])+":"+str(trunc(account_values[i]*100,1))+"% | "
         print(" "*150, end="\r", flush=True)
         currentTime = datetime.datetime.now()
         print(currentTime.strftime("%H:%M:%S")+" ~ "+print_str, end="\r", flush=True)
