@@ -194,8 +194,8 @@ def day_end():
     balances = get_balances()
     base = get_account()
     cash = float(base["cash"])
-    cost = cash     #Equity already includes cash, but cost basis does not
-    equity = 0
+    cost = cash
+    equity = cash
     investment = 0
 
     for entry in balances:
@@ -229,7 +229,7 @@ def day_end():
     }
     requests.post(url=url,json=payload)
 
-def checkin(ts,status):
+def checkin(ts):
     url = 'https://www.bmd-studios.com/bot'
     header = {
         "accept": "application/json"
@@ -238,11 +238,15 @@ def checkin(ts,status):
         "id":"02",
         "bot_name":"Alpaca",
         "ts":str(ts),
-        "status":status
+        "status":status["trading"]
     }
     requests.post(url=url,json=payload)
 
     #Sending general info to bmd
+
+    general_json = account
+    general_json["dt_count"] = status["dt_count"]
+
     url = 'https://www.bmd-studios.com/general'
     header = {
         "accept": "application/json"
