@@ -268,7 +268,7 @@ def bot():
     if int(status["checkinTS"]) == 0 :
         status["checkinTS"] = ts
     if (ts - status["checkinTS"]) > 60:
-        checkin(ts,status["trading"])
+        checkin(ts)
         status["checkinTS"] = ts
 
     
@@ -311,7 +311,8 @@ def bot():
 
         #Start equity list update on 1st Jan and Jun between 20:00 and 20:10
         if int(current_server_time.month) in [1,6] and int(current_server_time.day) == 1 and int(current_server_time.hour) == 20 and int(current_server_time.minute) < 10:
-            checkin(ts,status["updating"])
+            status["trading"] = "updating"
+            checkin(ts)
             getAllDividends.main()
             sortDividends.main()
             
