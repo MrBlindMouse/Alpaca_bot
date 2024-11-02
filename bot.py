@@ -35,12 +35,13 @@ def bmd_logger(function):
             return function(*args, **kwargs)
         except:
             print(" "*150, end="\r", flush=True)
-            print("Exception raised during "+function.__name__, flush=True)
+            print(str(datetime.datetime.today())+" ~ Exception raised during "+function.__name__, flush=True)
             exc_type, exc_value, exc_traceback = sys.exc_info()
             message = traceback.extract_tb(exc_traceback)
             post_message = "Exception raised during "+function.__name__+'<br>'
             for line in message.format():
                 post_message += line+'<br>'
+            post_message += str(exc_type)+'\n<br>'+str(exc_value)
             payload = {
                 "code": "2",
                 "app": "Alpaca",
