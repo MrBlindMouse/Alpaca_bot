@@ -2,5 +2,3 @@
 .env
 __pycache__/
 test.py
-topEquities.json
-dividends.json

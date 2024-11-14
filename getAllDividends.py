@@ -1,5 +1,5 @@
 import requests
-import json, datetime
+import json, datetime, time
 from dotenv import dotenv_values
 
 def start():
@@ -18,7 +18,7 @@ def start():
     today = datetime.date.today()
     searchPeriod = str(int(today.year)-4)
 
-    assets_url = url_base+"markets/v2/assets?status=active&asset_class=us_equity"
+    assets_url = url_base+"markets/v2/assets?status=active&asset_class=us_equity" #&exchange=NYSE%2CNASDAQ"
 
     headers = {
         "accept": "application/json",
@@ -30,14 +30,16 @@ def start():
     response = requests.get(assets_url, headers=headers)
     json_response = response.json()
     for line in json_response:
-        if line["tradable"]==True and line["fractionable"]==True and line["class"]!="crypto":
+        if line['status'] == 'active' and line["tradable"]==True and line["fractionable"]==True:
             equity_list.append(line["symbol"])
+    equity_list.sort()
     print("Number of Equities: "+str(len(equity_list)))
     print("Period: "+searchPeriod+"-01-01 ~ "+str(today)[:10])
     div_list=[]
     for entry in equity_list:
         print("Symbol: "+entry)
-        dividend_url = url_base+"markets/v1beta1/corporate-actions?symbols="+entry+"&types=cash_dividend&start="+searchPeriod+"-01-01&end="+str(today)[:10]+"&limit=1000&sort=desc"
+        dividend_url = "https://data.alpaca.markets/v1/corporate-actions?symbols="+entry+"&types=cash_dividend&start="+searchPeriod+"-01-01&end="+str(today)[:10]+"&limit=1000&sort=desc"
+        
         response = requests.get(dividend_url, headers=headers)
         json_response = response.json()
         payouts = []
@@ -52,18 +54,18 @@ def start():
                     "rate":line["rate"]
                 })
 
-            url = url_base+"markets/v2/stocks/"+entry+"/snapshot?feed=iex"
+            avg_rate=avg_rate/total_payouts
+
+            url = "https://data.alpaca.markets/v2/stocks/"+entry+"/snapshot?feed=iex"
             headers = {
                 "accept": "application/json",
-                "APCA-API-KEY-ID": "PKQ525I1RV9SFX54A1RX",
-                "APCA-API-SECRET-KEY": "R4SAntnvlUBq6YuNEpkAy1cuX9d3hAjT2cfcUXEE"
+                "APCA-API-KEY-ID": key,
+                "APCA-API-SECRET-KEY": secret
             }
             response = requests.get(url, headers=headers)
             json_response = response.json()
             if "dailyBar" in json_response:
                 price = float(json_response["dailyBar"]["c"])
-                avg_rate=avg_rate/total_payouts
-                print("Average dividend payout: "+str(avg_rate))
                 print("Average dividend yield: "+str(avg_rate/price))
                 div_list.append({
                     "symbol":entry,

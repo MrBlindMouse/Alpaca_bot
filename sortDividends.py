@@ -42,7 +42,7 @@ def sort():
                     low=entry["rate"]
                 number+=1
                 
-            if payoutNumber > 3 and number > 6:
+            if payoutNumber > 3 and number >= 6 and truncate(period.days/365,1) >= 0.5:
                 avgPayout=total/number
                 wma_perc = wma/equity["price"]
                 change_high = (high-avgPayout)/avgPayout
