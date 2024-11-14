@@ -480,17 +480,48 @@ def bot():
                         break
 
                 if not found:
-                    print(" "*150, end="\r", flush=True)
-                    print(equity["symbol"]+" not found, buying . . .")
-                    result = create_order(balance_value,"buy",equity["symbol"],entry["current_price"], status["trading"])
-                    if result == 'done':
-                        account[equity["symbol"]] = 0
-                    elif result == 'failed':
-                        account[equity["symbol"]] = diff
+                    if equity["symbol"] not in account:
                         print(" "*150, end="\r", flush=True)
-                        print(equity["symbol"]+" Market trade failed")
+                        print(equity["symbol"]+" not found, buying . . .")
+                        result = create_order(balance_value,"buy",equity["symbol"],entry["current_price"], status["trading"])
+                        if result == 'done':
+                            account[equity["symbol"]] = 0
+                        elif result == 'failed':
+                            account[equity["symbol"]] = diff
+                            print(" "*150, end="\r", flush=True)
+                            print(equity["symbol"]+" Market trade failed")
+                        else:
+                            account[equity["symbol"]] = result
                     else:
-                        account[equity["symbol"]] = result
+                        if issubclass(type(account[equity["symbol"]]),str):
+                            if status["trading"] == "open":
+                                delete_order(account[equity["symbol"]])
+                            print("Checking limit order . . .", end="\r", flush=True)
+                            #Check limit order
+                            url = url_base+"markets/v2/orders/"+account[equity["symbol"]]
+                            headers = {
+                                "accept": "application/json",
+                                "content-type": "application/json",
+                                "APCA-API-KEY-ID": apiKey,
+                                "APCA-API-SECRET-KEY": apiSecret
+                            }
+                            response = requests.get(url, headers=headers)
+
+                            if str(response.status_code) == '200':
+                                json_response = response.json()
+                                if json_response["status"] == "filled" or json_response["status"] == "canceled" or json_response["status"] == "expired":
+                                    account[equity["symbol"]] = 0
+                                    print_str = equity["symbol"]+"; Price: "+str(json_response["filled_avg_price"])
+                                    print(" "*150, end="\r", flush=True)
+                                    print(print_str)
+                                else:
+                                    delta = datetime.datetime.strptime(server_time["timestamp"][:19],tsFormat)-datetime.datetime.strptime(json_response["created_at"][:19],tsFormat)+datetime.timedelta(hours=4)
+                                    if int(delta.seconds) > 600:
+                                        print(" "*150, end="\r", flush=True)
+                                        print("Old limit order, cancelling . . ."+account[equity["symbol"]])
+                                        delete_order(account[equity["symbol"]])
+                        else:
+                            del account[equity["symbol"]]
 
         print_str = "Margin: "+str(trunc(margin*100,2))+"% |"
         account_symbols = list(account.keys())
