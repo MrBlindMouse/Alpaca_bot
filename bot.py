@@ -484,13 +484,13 @@ def bot():
                     print(equity["symbol"]+" not found, buying . . .")
                     result = create_order(balance_value,"buy",equity["symbol"],entry["current_price"], status["trading"])
                     if result == 'done':
-                        account[symbol] = 0
+                        account[equity["symbol"]] = 0
                     elif result == 'failed':
-                        account[symbol] = diff
+                        account[equity["symbol"]] = diff
                         print(" "*150, end="\r", flush=True)
                         print(equity["symbol"]+" Market trade failed")
                     else:
-                        account[symbol] = result
+                        account[equity["symbol"]] = result
 
         print_str = "Margin: "+str(trunc(margin*100,2))+"% |"
         account_symbols = list(account.keys())
