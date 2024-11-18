@@ -1,29 +1,38 @@
 [
     {
-        "symbol": "SMCY"
+        "symbol": "SMCY",
+        "yield":2.9206
     },
     {
-        "symbol": "FIAT"
+        "symbol": "FIAT",
+        "yield":2.0322
     },
     {
-        "symbol": "MRNY"
+        "symbol": "MRNY",
+        "yield":1.9391
     },
     {
-        "symbol": "MSTY"
+        "symbol": "MSTY",
+        "yield":1.4031
     },
     {
-        "symbol": "ULTY"
+        "symbol": "ULTY",
+        "yield":1.2890
     },
     {
-        "symbol": "CONY"
+        "symbol": "CONY",
+        "yield":1.2720
     },
     {
-        "symbol": "CRSH"
+        "symbol": "CRSH",
+        "yield":1.1701
     },
     {
-        "symbol": "IWMY"
+        "symbol": "IWMY",
+        "yield":1.1446
     },
     {
-        "symbol": "AMDY"
+        "symbol": "AMDY",
+        "yield":1.0477
     }
 ]
