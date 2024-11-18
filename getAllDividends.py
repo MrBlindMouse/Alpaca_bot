@@ -18,7 +18,7 @@ def start():
     today = datetime.date.today()
     searchPeriod = str(int(today.year)-4)
 
-    assets_url = url_base+"markets/v2/assets?status=active&asset_class=us_equity" #&exchange=NYSE%2CNASDAQ"
+    assets_url = url_base+"markets/v2/assets?status=active&asset_class=us_equity"
 
     headers = {
         "accept": "application/json",
@@ -29,8 +29,9 @@ def start():
     equity_list = []
     response = requests.get(assets_url, headers=headers)
     json_response = response.json()
+    forbidden_list = ["SAVE"]
     for line in json_response:
-        if line['status'] == 'active' and line["tradable"]==True and line["fractionable"]==True:
+        if line['status'] == 'active' and line["tradable"]==True and line["fractionable"]==True and all(e in ["ptp_no_exception","ptp_with_exception"] for e in line["attributes"]) and line["symbol"] not in forbidden_list:
             equity_list.append(line["symbol"])
     equity_list.sort()
     print("Number of Equities: "+str(len(equity_list)))
