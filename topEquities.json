@@ -54,7 +54,7 @@
         "flux_low": 70.24
     },
     {
-        "symbol": "SMCY",
+        "symbol": "QQQY",
         "annual%": 292.06,
         "payouts": 19.76534296028881,
         "rate%": 1.92,
@@ -63,7 +63,7 @@
         "flux_low": 85.47
     },
     {
-        "symbol": "FIAT",
+        "symbol": "WDTE",
         "annual%": 203.22,
         "payouts": 11.693363844393591,
         "rate%": 3.2,
