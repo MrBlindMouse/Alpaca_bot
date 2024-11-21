@@ -538,9 +538,9 @@ def bot():
         account_symbols = list(account.keys())
         account_values = list(account.values())
         for i in range(int(config["BOTNUMBER"])):
-            if issubclass(type(account_values[i]),str):
+            if issubclass(type(account_values[i]),str) and account_symbols[i][-6:] != '_value':
                 print_str += str(account_symbols[i])+":limit | "
-            else:
+            elif account_symbols[i][-6:] != '_value':
                 if account_symbols[i] == 'dt_count':
                     print_str += str(account_symbols[i])+":"+str(trunc(account_values[i]*100,1))+" | "
                 else:
