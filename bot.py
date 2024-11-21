@@ -243,10 +243,7 @@ def checkin(ts):
     }
     requests.post(url=url,json=payload)
 
-    #Sending general info to bmd
-
-    general_json = account
-    general_json["dt_count"] = status["dt_count"]
+    #Sending general account info to bmd
 
     url = 'https://www.bmd-studios.com/general'
     header = {
@@ -387,6 +384,8 @@ def bot():
                         found = True
                         if symbol not in account:
                                 account[symbol] = 0
+                        
+                        account[symbol+"_value"] = entry["market_value"]
 
                         if issubclass(type(account[symbol]),str):
                             if status["trading"] == "open":
