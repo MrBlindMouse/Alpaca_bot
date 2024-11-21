@@ -296,7 +296,7 @@ def bot():
             if status["trading"] == "open":
                 day_end()
             status["trading"] = "extended"
-        margin = float(config["MARGIN"]) *1.5
+        margin = float(config["MARGIN"]) *1.2
     else:
         if status["trading"] != "closed":
             print(" "*150, end="\r", flush=True)
