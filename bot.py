@@ -1,7 +1,6 @@
 from dotenv import dotenv_values
 import requests, json, time, datetime, traceback
 import traceback, sys
-import getAllDividends, sortDividends
 
 config=dotenv_values(".env")
 account = {}
@@ -311,12 +310,6 @@ def bot():
             checkin(ts)
         time.sleep(120)
 
-        #Start equity list update on 1st Jan and Jun between 20:00 and 20:10
-        if int(current_server_time.month) in [1,6] and int(current_server_time.day) == 1 and int(current_server_time.hour) == 20 and int(current_server_time.minute) < 10:
-            status["trading"] = "updating"
-            checkin(ts)
-            getAllDividends.main()
-            sortDividends.main()
             
 
     if status["trading"] != "closed":

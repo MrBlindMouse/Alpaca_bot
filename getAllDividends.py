@@ -31,7 +31,7 @@ def start():
     json_response = response.json()
     forbidden_list = ["SAVE"]
     for line in json_response:
-        if line['status'] == 'active' and line["tradable"]==True and line["fractionable"]==True and all(e in ["ptp_no_exception","ptp_with_exception"] for e in line["attributes"]) and line["symbol"] not in forbidden_list:
+        if line['status'] == 'active' and line["tradable"]==True and line["fractionable"]==True and not all(e in ["ptp_no_exception","ptp_with_exception"] for e in line["attributes"]) and line["symbol"] not in forbidden_list:
             equity_list.append(line["symbol"])
     equity_list.sort()
     print("Number of Equities: "+str(len(equity_list)))
@@ -47,6 +47,7 @@ def start():
         avg_rate=0
         total_payouts=0
         if "cash_dividends" in json_response["corporate_actions"]:
+            print
             for line in json_response["corporate_actions"]["cash_dividends"]:
                 avg_rate+= line["rate"]
                 total_payouts+=1

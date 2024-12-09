@@ -34,7 +34,7 @@ def sort():
                 if wma == 0:
                     wma = entry["rate"]
                 else:
-                    wma = ((wma*payoutNumber)+entry["rate"])/(payoutNumber+1)
+                    wma = (wma+entry["rate"])/2
                 total+=entry["rate"]
                 if entry["rate"] > high:
                     high=entry["rate"]
@@ -42,30 +42,29 @@ def sort():
                     low=entry["rate"]
                 number+=1
                 
-            if payoutNumber > 3 and number >= 6 and truncate(period.days/365,1) >= 0.5:
-                avgPayout=total/number
+            if payoutNumber > 6 and number >= 6 :
                 wma_perc = wma/equity["price"]
-                change_high = (high-avgPayout)/avgPayout
-                change_low = (avgPayout-low)/avgPayout
-                wyy = (wma_perc*number)/(period.days/365)
-                if change_high < 1 and change_low < 1:
-                    sortedDivs.append({
-                        "symbol":symbol,
-                        "annual%":truncate(wyy*100,2),
-                        "payouts":payoutNumber,
-                        "rate%":truncate((wma_perc)*100,2),
-                        "period":str(truncate(period.days/365,1))+" years",
-                        "flux_high":truncate(change_high*100,2),
-                        "flux_low":truncate(change_low*100,2),
-                    })
+                change_high = (high-wma)/wma
+                change_low = (wma-low)/wma
+                wyy = (1+wma_perc)**payoutNumber
+                sortedDivs.append({
+                    "symbol":symbol,
+                    "annual%":truncate(wyy*100,2),
+                    "payouts":payoutNumber,
+                    "rate%":truncate((wma_perc)*100,2),
+                    "period":str(truncate(period.days/365,1))+" years",
+                    "flux_high":truncate(change_high*100,2),
+                    "flux_low":truncate(change_low*100,2),
+                })
 
     sortedDivs.sort(key=lambda x: x["annual%"], reverse=True)
+    print(json.dumps(sortedDivs, indent=4))
 
     with open("topEquities.json","w+") as file:
         json_write=[]
         for key in range(topNumber):
             json_write.append(sortedDivs[key])
-        file.write(json.dumps(json_write,indent=4))
+        file.write(json.dumps(sortedDivs,indent=4))
 
 
 if __name__ == "__main__":
