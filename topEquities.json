@@ -54,51 +54,6 @@
         "flux_low": 64.87
     },
     {
-        "symbol": "AMZY",
-        "annual%": 174.28,
-        "payouts": 12.006578947368421,
-        "rate%": 4.73,
-        "period": "1.2 years",
-        "flux_high": 24.73,
-        "flux_low": 60.84
-    },
-    {
-        "symbol": "BITO",
-        "annual%": 165.7,
-        "payouts": 11.896296296296295,
-        "rate%": 4.33,
-        "period": "1.8 years",
-        "flux_high": 59.92,
-        "flux_low": 99.51
-    },
-    {
-        "symbol": "NFLY",
-        "annual%": 155.14,
-        "payouts": 12.006578947368421,
-        "rate%": 3.72,
-        "period": "1.2 years",
-        "flux_high": 73.19,
-        "flux_low": 47.99
-    },
-    {
-        "symbol": "RDTE",
-        "annual%": 147.31,
-        "payouts": 55.76388888888889,
-        "rate%": 0.69,
-        "period": "0.1 years",
-        "flux_high": 31.29,
-        "flux_low": 20.1
-    },
-    {
-        "symbol": "WDTE",
-        "annual%": 137.84,
-        "payouts": 54.47761194029851,
-        "rate%": 0.59,
-        "period": "0.1 years",
-        "flux_high": 639.59,
-        "flux_low": 17.55
-    },
-    {
         "symbol": "YMAX",
         "annual%": 136.58,
         "payouts": 23.429054054054053,
