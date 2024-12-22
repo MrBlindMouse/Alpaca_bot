@@ -301,12 +301,13 @@ def bot():
             print(" "*150, end="\r", flush=True)
             print(str(current_server_time)+":Market Close ~ Next open: "+str(server_time["next_open"])[:19], flush=True)
             status["trading"] = "closed"
-            account_symbols = list(account.keys())
-            account_values = list(account.values())
-            for i in range(int(config["BOTNUMBER"])):
-                if issubclass(type(account_values[i]),str):
-                    delete_order(account_values[i])
-                    account[account_symbols[i]] = 0
+            if account != {}:
+                account_symbols = list(account.keys())
+                account_values = list(account.values())
+                for i in range(int(config["BOTNUMBER"])):
+                    if issubclass(type(account_values[i]),str):
+                        delete_order(account_values[i])
+                        account[account_symbols[i]] = 0
             checkin(ts)
         time.sleep(120)
 
