@@ -215,7 +215,7 @@ def day_end():
             investment += float(entry["net_amount"])
         elif entry["activity_type"] == "CSW":
             investment -= float(entry["net_amount"])
-    
+
 
     url = 'https://www.bmd-studios.com/record'
     header = {
@@ -271,7 +271,7 @@ def bot():
         checkin(ts)
         status["checkinTS"] = ts
 
-    
+
     url = url_base+"markets/v2/clock"
     headers = {
         "accept": "application/json",
@@ -311,7 +311,7 @@ def bot():
             checkin(ts)
         time.sleep(120)
 
-            
+
 
     if status["trading"] != "closed":
         base = get_account()
@@ -351,7 +351,7 @@ def bot():
         total = float(base["cash"])
         for entry in balances:
             total += float(entry["market_value"])
-        balance_value = total/(int(config["BOTNUMBER"])+0.5)
+        balance_value = total/(int(config["BOTNUMBER"])+(int(config["BOTNUMBER"])*float(config["MARGIN"])*2))
         with open("topEquities.json", "r") as file:
             equity_list = json.loads(file.read())
             for entry in balances:
@@ -409,7 +409,7 @@ def bot():
                         else:
                             if float(entry["market_value"]) > balance_value:
                                 diff = (float(entry["market_value"]) - balance_value)/balance_value
-                                
+
                                 if diff > account[symbol]:
                                     account[symbol] = diff
                                 elif diff < (account[symbol]*(1-((account[symbol]/2)+(margin/2)))) and diff > margin:
@@ -440,7 +440,7 @@ def bot():
 
                             elif float(entry["market_value"]) < balance_value:
                                 diff = (balance_value - float(entry["market_value"]))/balance_value
-                                
+
                                 if diff > account[symbol]:
                                     account[symbol] = diff
                                 elif diff < (account[symbol]*(1-((account[symbol]/2)+(margin/2)))) and diff > margin:
