@@ -1,28 +1,117 @@
 from dotenv import dotenv_values
 import requests, json, time, datetime, traceback
 import traceback, sys
+from bs4 import BeautifulSoup
 
-config=dotenv_values(".env")
-account = {}
-status = {
-    "trading":"close",
-    "checkinTS":0,
-    "dt_count":0
-    }
-url_base = ""
-apiKey = ""
-apiSecret = ""
-backSwing = 1
-if config["VERSION"] == "paper":
-    print("Trading Paper Monies . . .")
-    url_base = "https://paper-api.alpaca."
-    apiKey = config["PAPERKEY"]
-    apiSecret = config["PAPERSECRET"]
-elif config["VERSION"] == "real":
-    print("Trading live . . .")
-    url_base = "https://api.alpaca."
-    apiKey = config["KEY"]
-    apiSecret = config["SECRET"]
+class Status():
+    def __init__(self):
+        self.tickers = []
+        self.equity = 0
+        self.market = "closed"
+        self.serverTime = 0
+        self.margin = 0
+        self.balanceTS = 0
+
+    def check_balances(self,positions):
+        for item in positions:
+            found = False
+            for key,ticker in enumerate(self.tickers):
+                if ticker["ticker"] == item["symbol"]:
+                    found = True
+                    if ticker["volume"] != item["qty"]:
+                        self.tickers[key]["volume"] = float(item["qty"])
+                    break
+            if not found:
+                print(" "*150, end="\r", flush=True)
+                print("Liquidating {}".format(item["symbol"]))
+                closeURL = "{}markets/v2/positons/{}?percentage=100".format(url_base,item["symbol"])
+                headers={
+                    "accept": "application/json",
+                    "content-type": "application/json",
+                    "APCA-API-KEY-ID": apiKey,
+                    "APCA-API-SECRET-KEY": apiSecret
+                }
+                result = requests.delete(closeURL,headers=headers)
+                if str(result.status_code) == "200":
+                    jsonResult = result.json()
+                    print("Liquidating {}; Status: {}".format(item["symbol"],jsonResult["status"]))
+                else:
+                    print("Liquidation failed")
+                    print(result.reason)
+                    print(result.text)
+
+
+    def check_ticker(self):
+        """
+        Check and update equity list for changes in NASDAQ100
+        """
+        tickers = find_tickers()
+        if tickers:
+            new_list = []
+            for item in tickers:
+                new_list.append({
+                    "ticker":item,
+                    "volume":0,
+                    "difference":0,
+                    "price":0,
+                    "limitTrade":{
+                        "open":False,
+                        "id":"",
+                        "ts":0,
+                    }
+                })
+            for key, new_ticker in enumerate(new_list):
+                for old_ticker in self.tickers:
+                    if old_ticker["ticker"] == new_ticker["ticker"]:
+                        new_list[key] = old_ticker
+            self.tickers = new_list
+        #else:
+            #Send Report to BMD
+
+def find_tickers():
+    global url_base
+    url = "https://www.slickcharts.com/nasdaq100"
+    result = requests.get(url,headers={'User-Agent': 'Mozilla/5.0'})
+    tickers = None
+    if str(result.status_code) == '200':
+        parsedResult = BeautifulSoup(result.content, 'html.parser')
+        tableBody = parsedResult.find('tbody', id="companyListComponent")
+        tableRows = tableBody.find_all('tr')
+        for line in tableRows:
+            tableCell = line.find_all('td')
+            i=0
+            for cell in tableCell:
+                if i == 2:
+                    if not tickers:
+                        tickers = []
+                    tickers.append(cell.text)
+                i += 1
+        for key, ticker in enumerate(tickers):
+            assetURL = "{}markets/v2/assets/{}".format(url_base, ticker)
+            headers = {
+                "accept": "application/json",
+                "content-type": "application/json",
+                "APCA-API-KEY-ID": apiKey,
+                "APCA-API-SECRET-KEY": apiSecret
+            }
+            result = requests.get(assetURL, headers=headers)
+            if str(result.status_code) == '200':
+                jsonResult = result.json()
+                if bool(jsonResult["tradable"]) and bool(jsonResult["fractionable"]) and jsonResult["status"] == "active" and "ptp_no_exception" not in jsonResult["attributes"] and "ptp_with_exception" not in jsonResult["attributes"]:
+                    print(" "*150, end="\r", flush=True)
+                    print("{}: {} accepted".format(key,ticker), end="\r", flush=True)
+                else:
+                    tickers.pop(key)
+                    print("Asset profile for {} nor favourable".format(ticker))
+
+            else:
+                tickers.pop(key)
+                print("Alpaca API error: {}".format(result.reason))
+                print(assetURL)
+                print(json.dumps(header, indent=4))
+    else:
+        print(result.reason)
+    return tickers
 
 def trunc(value,digits):
     x = 10**digits
@@ -62,8 +151,16 @@ def bmd_logger(function):
             time.sleep(10)
     return exception_handler
 
-@bmd_logger
-def create_order(volume,direction,symbol,currentPrice, marketStatus, type="value"):
+def create_order(volume, direction, symbol, marketStatus="open", currentPrice=0, type="value"):
+    """
+    If type = 'qty' then volume = number of stocks
+    if type = 'value' then volume = value of shares
+    currentPrice required if marketStatus != 'open'
+    marketStatus required if not 'open'
+    Returns 'success' upon market trade success
+    Returns 'failed' upon trade failure
+    Returns trade id upon limit trade success
+    """
 
     if marketStatus == "open":
         if type == "qty":
@@ -109,7 +206,7 @@ def create_order(volume,direction,symbol,currentPrice, marketStatus, type="value
                 "extended_hours":True,
             }
 
-    url=url_base+"markets/v2/orders"
+    url="{}markets/v2/orders".format(url_base)
     headers = {
         "accept": "application/json",
         "content-type": "application/json",
@@ -122,7 +219,7 @@ def create_order(volume,direction,symbol,currentPrice, marketStatus, type="value
             json_response = response.json()
             status = "open"
             while status == "open":
-                url = url_base+"markets/v2/orders/"+str(json_response["id"])
+                url = "{}markets/v2/orders/{}".format(url_base,str(json_response["id"]))
                 headers = {
                     "accept": "application/json",
                     "content-type": "application/json",
@@ -134,17 +231,18 @@ def create_order(volume,direction,symbol,currentPrice, marketStatus, type="value
                     json_response = response.json()
                     if json_response["status"] == "filled" or json_response["status"] == "canceled" or json_response["status"] == "expired":
                         status = "closed"
-                        print_str = direction+": "+symbol+"; Price: "+str(json_response["filled_avg_price"])
-                        print(" "*150, end="\r", flush=True)
-                        print(print_str)
                     else:
                         time.sleep(1)
                 else:
                     status = "close"
                     print(" "*150, end="\r", flush=True)
+                    print(response.reason)
                     print(response.text)
-            return "done"
+            return "success"
         else:
+            print(" "*150, end="\r", flush=True)
+            print(result.reason)
+            print(result.text)
             return "failed"
     else:
         if str(response.status_code) == '200':
@@ -152,12 +250,12 @@ def create_order(volume,direction,symbol,currentPrice, marketStatus, type="value
             return str(json_response["id"])
         else:
             print(" "*150, end="\r", flush=True)
-            return str(response.text)
+            print(response.reason)
+            print(response.text)
             return "failed"
 
-@bmd_logger
 def get_account():
-    url = url_base+"markets/v2/account"
+    url = "{}markets/v2/account".format(url_base)
     headers = {
         "accept": "application/json",
         "APCA-API-KEY-ID": apiKey,
@@ -167,9 +265,8 @@ def get_account():
     json_response = response.json()
     return json_response
 
-@bmd_logger
 def get_balances():
-    url = url_base+"markets/v2/positions"
+    url = "{}markets/v2/positions".format(url_base)
     headers = {
         "accept": "application/json",
         "APCA-API-KEY-ID": apiKey,
@@ -180,16 +277,26 @@ def get_balances():
     json_response = response.json()
     return json_response
 
-@bmd_logger
-def delete_order(id):
-    url = url_base+"markets/v2/orders/"+id
-
+def get_balance(symbol):
+    url = "{}markets/v2/positions/{}".format(url_base,symbol)
     headers = {
+        "accept": "application/json",
         "APCA-API-KEY-ID": apiKey,
         "APCA-API-SECRET-KEY": apiSecret
     }
-    requests.delete(url, headers=headers)
 
+    response = requests.get(url, headers=headers)
+    if str(response.status_code) == "200":
+        json_response = response.json()
+        return float(json_response["qty"])
+    else:
+        print(" "*150, end="\r", flush=True)
+        print("Error finding {} balance".format(symbol), flush=True)
+        print(response.reason)
+        print(response.text)
+        return None
+
+"""
 def day_end():
     balances = get_balances()
     base = get_account()
@@ -218,7 +325,7 @@ def day_end():
     
 
     url = 'https://www.bmd-studios.com/record'
-    header = {
+    headers = {
         "accept": "application/json"
     }
     payload={
@@ -231,7 +338,7 @@ def day_end():
 
 def checkin(ts):
     url = 'https://www.bmd-studios.com/bot'
-    header = {
+    headers = {
         "accept": "application/json"
     }
     payload={
@@ -248,7 +355,7 @@ def checkin(ts):
     general_json["dt_count"] = status["dt_count"]
 
     url = 'https://www.bmd-studios.com/general'
-    header = {
+    headers = {
         "accept": "application/json"
     }
     payload={
@@ -258,289 +365,270 @@ def checkin(ts):
         "json_string":json.dumps(account)
     }
     requests.post(url=url,json=payload)
-
+"""
 @bmd_logger
-def bot():
-    global account
-    global status
-    tsFormat = "%Y-%m-%dT%H:%M:%S"
-    ts = int(datetime.datetime.now().timestamp())
-    if int(status["checkinTS"]) == 0 :
-        status["checkinTS"] = ts
-    if (ts - status["checkinTS"]) > 60:
-        checkin(ts)
-        status["checkinTS"] = ts
-
-    
-    url = url_base+"markets/v2/clock"
+def bot(account):
     headers = {
         "accept": "application/json",
+        "content-type": "application/json",
         "APCA-API-KEY-ID": apiKey,
         "APCA-API-SECRET-KEY": apiSecret
     }
-    response = requests.get(url, headers=headers)
-    server_time = response.json()
-    current_server_time = datetime.datetime.strptime(server_time["timestamp"][:19],tsFormat)
-    #Check server status and set margin accordingly
-    if server_time["is_open"]:
-        margin = float(config["MARGIN"])
-        if status["trading"] != "open":
-            print(" "*150, end="\r", flush=True)
-            print(str(datetime.date.today())+": Market Open", flush=True)
-            status["trading"] = "open"
-    elif current_server_time.weekday() >= 0 and current_server_time.weekday() <= 4 and current_server_time.hour >= 4  and current_server_time.hour < 20:
-        if status["trading"] != "extended":
-            print(" "*150, end="\r", flush=True)
-            print(str(current_server_time)+":Market Close, trading extended hrs ~ Next open: "+str(server_time["next_open"])[:19], flush=True)
-            if status["trading"] == "open":
-                day_end()
-            status["trading"] = "extended"
-        margin = float(config["MARGIN"]) *1.2
-    else:
-        if status["trading"] != "closed":
-            print(" "*150, end="\r", flush=True)
-            print(str(current_server_time)+":Market Close ~ Next open: "+str(server_time["next_open"])[:19], flush=True)
-            status["trading"] = "closed"
-            if account != {}:
-                account_symbols = list(account.keys())
-                account_values = list(account.values())
-                for i in range(int(config["BOTNUMBER"])):
-                    if issubclass(type(account_values[i]),str):
-                        delete_order(account_values[i])
-                        account[account_symbols[i]] = 0
-            checkin(ts)
-        time.sleep(120)
+    if account.equity == 0:
+        accountData = get_account()
+        account.equity = float(accountData["equity"])
 
+    if len(account.tickers) < 1:    # Initialise tickers
+        account.check_ticker()
+
+        ordersURL = "{}markets/v2/orders".format(url_base) # Finding un-recorded open limit orders
+        result = requests.get(ordersURL, headers=headers)
+        if str(result.status_code) == "200":
+            jsonResult = result.json()
+            for item in jsonResult:
+                for key,ticker in enumerate(account.tickers):
+                    if item["symbol"] == ticker["ticker"]:
+                        if not ticker["limitTrade"]["open"]:
+                            account.tickers[key]['limitTrade']["open"] = True
+                            account.tickers[key]['limitTrade']["id"] = item["id"]
+                            account.tickers[key]['limitTrade']["ts"] = 0
+                        break
+
+
+    url = "{}markets/v2/clock".format(url_base)
+    result = requests.get(url, headers=headers)
+    if str(result.status_code) == "200":
+        jsonResult = result.json()
+        time_string = jsonResult["timestamp"]
+        time_string = time_string[:19]+time_string[-6:]
+        dt_object = datetime.datetime.strptime(time_string,"%Y-%m-%dT%H:%M:%S%z")
+        account.serverTime = int(dt_object.timestamp())
+
+        if (account.serverTime - account.balanceTS) > 3600:
+            positions = get_balances()
+            account.check_balances(positions)
+            account.balanceTS = account.serverTime
+
+        if jsonResult["is_open"]:
+            if account.market == "extended":
+                print(" "*150, end="\r", flush=True)
+                print("Trade start for {}-{}-{}".format(str(dt_object.year),str(dt_object.month),str(dt_object.day)), flush=True)
+                print("Updateting Equity List . . .")
+                account.check_ticker()
+            account.market = "open"
+        elif int(dt_object.hour) > 4 and int(dt_object.hour) < 20:
+            if account.market == "closed":
+                print(" "*150, end="\r", flush=True)
+                print("Checking if {}-{}-{} is a holiday".format(str(dt_object.year),str(dt_object.month),str(dt_object.day)),end="\r", flush=True)
+                startDate = "start={}-{}-{} 00:00:00".format(str(dt_object.year), str(dt_object.month), str(dt_object.day))
+                endDate = "end={}-{}-{} 23:59:00".format(str(dt_object.year), str(dt_object.month), str(dt_object.day))
+                url = "{}markets/v2/calendar?{}&{}".format(url_base,startDate,endDate)
+                result = requests.get(url, headers=headers)
+                if str(result.status_code) == '200':
+                    jsonResult = result.json()
+                    if len(jsonResult) < 1:
+                        print(" "*150, end="\r", flush=True)
+                        print("{}:{} ~ Market closed for the day".format(str(dt_object.hour),str(dt_object.minute)), flush=True)
+                        account.market = "holiday"
+                        time.sleep(61200)
+                    else:
+                        print(" "*150, end="\r", flush=True)
+                        print("Extended Hours Trade start for {}-{}-{}".format(str(dt_object.year),str(dt_object.month),str(dt_object.day)), flush=True)
+                        account.market = "extended"
+
+                else:
+                    print(" "*150, end="\r", flush=True)
+                    print(result.reason)
+                    print(result.text)
+            elif account.market == "open":
+                print(" "*150, end="\r", flush=True)
+                print("Market Closed, Extended Hours Trade untill 20:00", flush=True)
+                account.market = "extended"
+
+        else:
+            if account.market == "closed":
+                print(" "*150, end="\r", flush=True)
+                print("{}:{}:{} ~ Market Closed, Equity: ${}".format(dt_object.hour,dt_object.minute,dt_object.second, str(account.equity)), end="\r", flush=True)
+                time.sleep(180)
+            else:
+                print(" "*150, end="\r", flush=True)
+                print("Market Closed for {}-{}".format(str(dt_object.month),str(dt_object.day)), flush=True)
+                account.market = "closed"
+
+
+        if account.market != "closed" and account.market != "holiday":
+            accountData = get_account()
+            total_pos = len(account.tickers)
+            account.equity = float(accountData["equity"])
+            balance_value = account.equity/(total_pos+(total_pos*account.margin*2))
+            ticker_list = []
+            for ticker in account.tickers:
+                ticker_list.append(ticker["ticker"])
+            tickersStr = "%2C".join(ticker_list)
+            snapshotURL = "https://data.alpaca.markets/v2/stocks/snapshots?symbols={}&feed=iex".format(tickersStr)
+            result = requests.get(snapshotURL, headers=headers)
+            if str(result.status_code) == "200":
+                jsonResult = result.json()
+                for key,ticker in enumerate(account.tickers):
+                    account.tickers[key]["price"] = float(jsonResult[ticker["ticker"]]["minuteBar"]["vw"])
+
+            else:
+                print("Error calling new snapshot")
+                print(str(result.status_code))
+                print(result.reason)
+                print(result.text)
             
 
-    if status["trading"] != "closed":
-        base = get_account()
-        dt_count = int(base["daytrade_count"])
-        if dt_count == 0 and status["dt_count"] != dt_count:
-            status["dt_count"] = dt_count
-        elif dt_count == 1:
-            status["dt_count"] = dt_count
-        elif dt_count == 2:
-            if status["dt_count"] < dt_count:
-                payload = {
-                    "code": "1",
-                    "app": "Alpaca",
-                    "snippet": "Warning, daytrade count(2) is climbing!"
-                    }
-                requests.post("https://www.bmd-studios.com/log", json=payload)
-            status["dt_count"] = dt_count
-        elif dt_count == 3:
-            if status["dt_count"] < dt_count:
-                payload = {
-                    "code": "3",
-                    "app": "Alpaca",
-                    "snippet": "Warning, daytrade count(3) is critical!"
-                    }
-                requests.post("https://www.bmd-studios.com/log", json=payload)
-            status["dt_count"] = dt_count
-        elif dt_count == 4:
-            if status["dt_count"] < dt_count:
-                payload = {
-                    "code": "3",
-                    "app": "Alpaca",
-                    "snippet": "Too late, we dead! DT count is 4 . . .<br>Now we need R500k to trade . . .<br>Do we have R500k already?"
-                    }
-                requests.post("https://www.bmd-studios.com/log", json=payload)
-            status["dt_count"] = dt_count
-        balances = get_balances()
-        total = float(base["cash"])
-        for entry in balances:
-            total += float(entry["market_value"])
-        balance_value = total/(int(config["BOTNUMBER"])+0.5)
-        with open("topEquities.json", "r") as file:
-            equity_list = json.loads(file.read())
-            for entry in balances:
-                found = False
-                for i in range(int(config["BOTNUMBER"])):
-                    equity = equity_list[i]
-                    if equity["symbol"] == entry["symbol"]:
-                        found=True
-                        break
-                if not found:
-                    if float(entry["market_value"]) > 1:
-                        print(" "*150, end="\r", flush=True)
-                        print("Selling Equity not to be traded:"+str(entry["symbol"]))
-                        sell_volume = float(entry["qty"])
-                        create_order(sell_volume,"sell",entry["symbol"],entry["current_price"], status["trading"],"qty")
 
-            for i in range(int(config["BOTNUMBER"])):
-                equity = equity_list[i]
-                found = False
-                for entry in balances:
-                    if entry["symbol"] == equity["symbol"]:
-                        symbol = entry["symbol"]
-                        found = True
-                        if symbol not in account:
-                                account[symbol] = 0
-
-                        if issubclass(type(account[symbol]),str):
-                            if status["trading"] == "open":
-                                delete_order(account[symbol])
-                            print("Checking limit order . . .", end="\r", flush=True)
-                            #Check limit order
-                            url = url_base+"markets/v2/orders/"+account[symbol]
-                            headers = {
-                                "accept": "application/json",
-                                "content-type": "application/json",
-                                "APCA-API-KEY-ID": apiKey,
-                                "APCA-API-SECRET-KEY": apiSecret
-                            }
-                            response = requests.get(url, headers=headers)
-
-                            if str(response.status_code) == '200':
-                                json_response = response.json()
-                                if json_response["status"] == "filled" or json_response["status"] == "canceled" or json_response["status"] == "expired":
-                                    account[symbol] = 0
-                                    print_str = symbol+"; Price: "+str(json_response["filled_avg_price"])
-                                    print(" "*150, end="\r", flush=True)
-                                    print(print_str)
-                                else:
-                                    delta = datetime.datetime.strptime(server_time["timestamp"][:19],tsFormat)-datetime.datetime.strptime(json_response["created_at"][:19],tsFormat)+datetime.timedelta(hours=4)
-                                    if int(delta.seconds) > 600:
-                                        print(" "*150, end="\r", flush=True)
-                                        print("Old limit order, cancelling . . ."+account[symbol])
-                                        delete_order(account[symbol])
-
-                        else:
-                            if float(entry["market_value"]) > balance_value:
-                                diff = (float(entry["market_value"]) - balance_value)/balance_value
-                                
-                                if diff > account[symbol]:
-                                    account[symbol] = diff
-                                elif diff < (account[symbol]*(1-((account[symbol]/2)+(margin/2)))) and diff > margin:
-                                    sell_value = balance_value*diff
-                                    result = create_order(sell_value,"sell",symbol,entry["current_price"], status["trading"])
-                                    if result == 'done':
-                                        account[symbol] = 0
-                                    elif result == 'failed':
-                                        account[symbol] = diff
-                                        print(" "*150, end="\r", flush=True)
-                                        print(equity["symbol"]+" Market trade failed")
-                                    else:
-                                        account[symbol] = result
-                                elif diff < margin:
-                                    account[symbol] = diff
-                                elif diff > margin*4:
-                                    sell_value = balance_value*diff
-                                    result = create_order(sell_value,"sell",symbol,entry["current_price"], status["trading"])
-                                    if result == 'done':
-                                        account[symbol] = 0
-                                    elif result == 'failed':
-                                        account[symbol] = diff
-                                        print(" "*150, end="\r", flush=True)
-                                        print(equity["symbol"]+" Market trade failed")
-                                    else:
-                                        account[symbol] = result
-                                    #Implement Emergency Notification
-
-                            elif float(entry["market_value"]) < balance_value:
-                                diff = (balance_value - float(entry["market_value"]))/balance_value
-                                
-                                if diff > account[symbol]:
-                                    account[symbol] = diff
-                                elif diff < (account[symbol]*(1-((account[symbol]/2)+(margin/2)))) and diff > margin:
-                                    buy_value = balance_value*diff
-                                    result = create_order(buy_value,"buy",symbol,entry["current_price"], status["trading"])
-                                    if result == 'done':
-                                        account[symbol] = 0
-                                    elif result == 'failed':
-                                        account[symbol] = diff
-                                        print(" "*150, end="\r", flush=True)
-                                        print(equity["symbol"]+" Market trade failed")
-                                    else:
-                                        account[symbol] = result
-                                elif diff < margin:
-                                    account[symbol] = diff
-                                elif diff > margin*4:
-                                    buy_value = balance_value*diff
-                                    result = create_order(buy_value,"buy",symbol,entry["current_price"], status["trading"])
-                                    if result == 'done':
-                                        account[symbol] = 0
-                                    elif result == 'failed':
-                                        account[symbol] = diff
-                                        print(" "*150, end="\r", flush=True)
-                                        print(equity["symbol"]+" Market trade failed")
-                                    else:
-                                        account[symbol] = result
-                                    #Implement Emergency Notification
-                        break
-
-                if not found:
-                    if equity["symbol"] not in account:
-                        print(" "*150, end="\r", flush=True)
-                        print(equity["symbol"]+" not found, buying . . .")
-
-                        url = "https://data.alpaca.markets/v2/stocks/"+equity["symbol"]+"/snapshot?feed=iex"
-                        headers = {
-                            "accept": "application/json",
-                            "APCA-API-KEY-ID": apiKey,
-                            "APCA-API-SECRET-KEY": apiSecret
-                        }
-                        response = requests.get(url, headers=headers)
-                        json_response = response.json()
-
-                        current_price = float(json_response["latestTrade"]["p"])*1.01
-
-                        result = create_order(balance_value,"buy",equity["symbol"],current_price, status["trading"])
-                        if result == 'done':
-                            account[equity["symbol"]] = 0
-                        elif result == 'failed':
+            for key, ticker in enumerate(account.tickers):
+                if ticker["limitTrade"]["open"]:    #Checking open limit orders
+                    openURL = "{}markets/v2/orders/{}".format(url_base,ticker["limitTrade"]["id"])
+                    result = requests.delete(openURL, headers=headers)
+                    if str(result.status_code) == "200":
+                        jsonResult = result.json()
+                        if jsonResult["status"] == "filled" or jsonResult["status"] == "canceled" or jsonResult["status"] == "expired":
+                            account.tickers[key]["limitTrade"]["open"] = False
+                            account.tickers[key]["limitTrade"]["id"] = ""
+                            account.tickers[key]["limitTrade"]["ts"] = account.serverTime
+                            newVolume = get_balance(ticker["ticker"])
+                            if newVolume and newVolume != ticker["volume"]:
+                                account.tickers[key]["volume"] = newVolume
+                        elif (account.serverTime - ticker["limitTrade"]["ts"]) > 300:    #Removing old limit orders
+                            deleteURL = "{}markets/v2/orders/{}".format(url_base,ticker["limitTrade"]["id"])
+                            result = requests.delete(deleteURL, headers=headers)
                             print(" "*150, end="\r", flush=True)
-                            print(equity["symbol"]+" Market trade failed")
-                        else:
-                            account[equity["symbol"]] = result
-                    else:
-                        if issubclass(type(account[equity["symbol"]]),str):
-                            if status["trading"] == "open":
-                                delete_order(account[equity["symbol"]])
-                                del account[equity["symbol"]]
+                            if str(result.status_code) == "204":
+                                print("Cancelled old limit order")
                             else:
-                                print("Checking limit order . . .", end="\r", flush=True)
-                                #Check limit order
-                                url = url_base+"markets/v2/orders/"+account[equity["symbol"]]
-                                headers = {
-                                    "accept": "application/json",
-                                    "content-type": "application/json",
-                                    "APCA-API-KEY-ID": apiKey,
-                                    "APCA-API-SECRET-KEY": apiSecret
-                                }
-                                response = requests.get(url, headers=headers)
+                                print("Failed to cancel old limit order", flush=True)
+                                print(str(result.status_code))
+                                print(result.reason)
+                                print(result.text)
+                            account.tickers[key]["limitTrade"]["open"] = False
+                            account.tickers[key]["limitTrade"]["id"] = ""
+                            account.tickers[key]["limitTrade"]["ts"] = account.serverTime
+                    else:
+                        print(" "*150, end="\r", flush=True)
+                        print("Failed to check open order: {}".format(ticker["limitTrade"]["id"]))
+                        print(result.reason)
+                        print(result.text)
+                        account.tickers[key]["limitTrade"]["open"] = False
+                        account.tickers[key]["limitTrade"]["id"] = ""
+                        account.tickers[key]["limitTrade"]["ts"] = account.serverTime
+                        newVolume = get_balance(ticker["ticker"])
+                        if newVolume and newVolume != ticker["volume"]:
+                            account.tickers[key]["volume"] = newVolume
 
-                                if str(response.status_code) == '200':
-                                    json_response = response.json()
-                                    if json_response["status"] == "filled" or json_response["status"] == "canceled" or json_response["status"] == "expired":
-                                        account[equity["symbol"]] = 0
-                                        print_str = equity["symbol"]+"; Price: "+str(json_response["filled_avg_price"])
-                                        print(" "*150, end="\r", flush=True)
-                                        print(print_str)
-                                    else:
-                                        delta = datetime.datetime.strptime(server_time["timestamp"][:19],tsFormat)-datetime.datetime.strptime(json_response["created_at"][:19],tsFormat)+datetime.timedelta(hours=4)
-                                        if int(delta.seconds) > 600:
-                                            print(" "*150, end="\r", flush=True)
-                                            print("Old limit order, cancelling . . ."+account[equity["symbol"]])
-                                            delete_order(account[equity["symbol"]])
+                if ticker["volume"] == 0 and not ticker["limitTrade"]["open"]:   #Buy initial shares
+                    result = create_order(balance_value,"buy",ticker["ticker"],account.market,ticker["price"],"value")
+                    print(" "*150, end="\r", flush=True)
+                    print("Buyinf initial {} shares".format(ticker["ticker"]), flush=True)
+                    if result == "success":
+                        print("Bought ${} of {}".format(balance_value,ticker["ticker"]), )
+                        newVolume = get_balance(ticker["ticker"])
+                        if newVolume and newVolume != ticker["volume"]:
+                            account.tickers[key]["volume"] = newVolume
+                    elif result == "failed":
+                        print("Failed to buy ${} of {}".format(balance_value,ticker["ticker"]), )
+                    else:
+                        print("Place limit order to buy ${} of {}".format(balance_value,ticker["ticker"]), )
+                        account.tickers[key]["limitTrade"]["open"] = True
+                        account.tickers[key]["limitTrade"]["id"] = result
+                        account.tickers[key]["limitTrade"]["ts"] = account.serverTime
 
-        print_str = "Margin: "+str(trunc(margin*100,2))+"% |"
-        account_symbols = list(account.keys())
-        account_values = list(account.values())
-        for i in range(int(config["BOTNUMBER"])):
-            if issubclass(type(account_values[i]),str):
-                print_str += str(account_symbols[i])+":limit | "
-            else:
-                if account_symbols[i] == 'dt_count':
-                    print_str += str(account_symbols[i])+":"+str(trunc(account_values[i]*100,1))+" | "
-                else:
-                    print_str += str(account_symbols[i])+":"+str(trunc(account_values[i]*100,1))+"% | "
+                if not ticker["limitTrade"]["open"]:    #Balance ticker if no limit trade open
+                    if (ticker["volume"]*ticker["price"]) > balance_value:
+                        diff = ((ticker["volume"]*ticker["price"])-balance_value)/balance_value
+                        if diff < account.margin:
+                            account.tickers[key]["difference"] = diff
+                        elif diff > ticker["difference"]:
+                            account.tickers[key]["difference"] = diff
+                        elif diff < (ticker["difference"]*(1-((ticker["difference"]+account.margin)/2))) and diff > account.margin:
+                            sell_value = (ticker["volume"]*ticker["price"])-balance_value
+                            result = create_order(sell_value,"sell",ticker["ticker"],account.market,ticker["price"],"value")
+                            print(" "*150, end="\r", flush=True)
+                            print("Balancing {}:".format(ticker["ticker"]), flush=True)
+                            if result == "success":
+                                print("Sold ${} of {}".format(str(sell_value),ticker["ticker"]))
+                                newVolume = get_balance(ticker["ticker"])
+                                if newVolume:
+                                    account.tickers[key]["volume"] = newVolume
+                            elif result == "failed":
+                                print("Failed to sell ${} of {}".format(str(sell_value),ticker["ticker"]))
+                            else:
+                                print("Place limit order to sell ${} of {}".format(str(sell_value),ticker["ticker"]))
+                                account.tickers[key]["limitTrade"]["open"] = True
+                                account.tickers[key]["limitTrade"]["id"] = result
+                                account.tickers[key]["limitTrade"]["ts"] = account.serverTime
+
+
+                    elif (ticker["volume"]*ticker["price"]) < balance_value:
+                        diff = (balance_value-(ticker["volume"]*ticker["price"]))/balance_value
+                        if diff < account.margin:
+                            account.tickers[key]["difference"] = diff
+                        elif diff > ticker["difference"]:
+                            account.tickers[key]["difference"] = diff
+                        elif diff < (ticker["difference"]*(1-((ticker["difference"]+account.margin)/2))) and diff > account.margin:
+                            buy_value = (balance_value-(ticker["volume"]*ticker["price"]))
+                            result = create_order(buy_value,"buy",ticker["ticker"],account.market,ticker["price"],"value")
+                            print(" "*150, end="\r", flush=True)
+                            print("Balancing {}:".format(ticker["ticker"]), flush=True)
+                            if result == "success":
+                                print("Bought ${} of {}".format(str(buy_value),ticker["ticker"]))
+                                newVolume = get_balance(ticker["ticker"])
+                                if newVolume:
+                                    account.tickers[key]["volume"] = newVolume
+                            elif result == "failed":
+                                print("Failed to buy ${} of {}".format(str(buy_value),ticker["ticker"]))
+                            else:
+                                print("Place limit order to buy ${} of {}".format(str(buy_value),ticker["ticker"]))
+                                account.tickers[key]["limitTrade"]["open"] = True
+                                account.tickers[key]["limitTrade"]["id"] = result
+                                account.tickers[key]["limitTrade"]["ts"] = account.serverTime
+
+                    else:
+                        account.tickers[key]["difference"] = 0
+
+            highTicker = {
+                "ticker":"",
+                "diff":0
+            }
+            for ticker in account.tickers:
+                if ticker["difference"] > highTicker["diff"]:
+                    highTicker["diff"] = ticker["difference"]
+                    highTicker["ticker"] = ticker["ticker"]
+
+            print(" "*150, end="\r", flush=True)
+            print("{}:{}:{} ~ '{}' trade, Equity: ${}; Highest Swing {}:{}%".format(dt_object.hour,dt_object.minute,dt_object.second,account.market.upper(),account.equity,highTicker["ticker"],trunc(highTicker["diff"]*100,1)), end="\r", flush=True)
+            time.sleep(60)
+    else:
         print(" "*150, end="\r", flush=True)
-        currentTime = datetime.datetime.now()
-        print(currentTime.strftime("%H:%M:%S")+" ~ "+print_str, end="\r", flush=True)
+        print("Error finding Server Time", flush=True)
+        print(result.reason)
+        print(result.text)
+    
+
+
+
+
+                    
+    
 
 
 if __name__=="__main__":
+    account = Status()
     while True:
-        bot()
+        config = dotenv_values(".env")
+        url_base = ""
+        apiKey = ""
+        apiSecret = ""
+        backSwing = 1
+        if config["VERSION"] == "PAPER":
+            url_base = "https://paper-api.alpaca."
+        elif config["VERSION"] == "REAL":
+            url_base = "https://api.alpaca."
+        apiKey = config["API_KEY"]
+        apiSecret = config["API_SECRET"]
+        account.margin = float(config["MARGIN"])
+
+        bot(account)
