@@ -279,8 +279,14 @@ def bot():
         "APCA-API-SECRET-KEY": apiSecret
     }
     response = requests.get(url, headers=headers)
-    server_time = response.json()
-    current_server_time = datetime.datetime.strptime(server_time["timestamp"][:19],tsFormat)
+    if response.status_code == 200:
+        server_time = response.json()
+        current_server_time = datetime.datetime.strptime(server_time["timestamp"][:19],tsFormat)
+    else:
+        print("Alpaca Server Error~")
+        print(response.status_code)
+        print(response.reason)
+        time.sleep(15)
     #Check server status and set margin accordingly
     if server_time["is_open"]:
         margin = float(config["MARGIN"])
@@ -539,7 +545,7 @@ def bot():
         print(" "*150, end="\r", flush=True)
         currentTime = datetime.datetime.now()
         print(currentTime.strftime("%H:%M:%S")+" ~ "+print_str, end="\r", flush=True)
-
+        time.sleep(5)
 
 if __name__=="__main__":
     while True:
