@@ -4,6 +4,7 @@ import traceback, sys, os
 from bs4 import BeautifulSoup
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
+from requests_ratelimiter import LimiterSession
 import pickle
 import indicators
 
@@ -32,14 +33,14 @@ class Status():
             if not found:
                 print(" "*150, end="\r", flush=True)
                 print("Liquidating {}".format(item["symbol"]))
-                closeURL = "{}markets/v2/positons/{}?percentage=100".format(config.urlBase,item["symbol"])
+                closeURL = "{}markets/v2/positions/{}?percentage=100".format(config.urlBase,item["symbol"])
                 headers={
                     "accept": "application/json",
                     "content-type": "application/json",
                     "APCA-API-KEY-ID": config.apiKey,
                     "APCA-API-SECRET-KEY": config.apiSecret
                 }
-                result = requests.delete(closeURL,headers=headers)
+                result = session.delete(closeURL,headers=headers)
                 if str(result.status_code) == "200":
                     jsonResult = result.json()
                     print("Liquidating {}; Status: {}".format(item["symbol"],jsonResult["status"]))
@@ -75,16 +76,16 @@ class Status():
                     if old_ticker["ticker"] == new_ticker["ticker"]:
                         new_list[key] = old_ticker
             print("Updateting Trends")
-            trendList = indicators.trend(tickers,config)
+            trendList = indicators.trend(tickers, config, session)
             for key, value in enumerate(new_list):
                 for entry in trendList:
                     if new_list[key]["ticker"] == entry["ticker"]:
                         new_list[key]["rsi"] = entry["rsi"]
                         new_list[key]["trend"] = entry["trend"]
-            currentTS = time.time()
-            if (currentTS - self.betaTS) > 1728000:
+            currentTS = int(time.time())
+            if (currentTS - self.betaTS) > 604800: #7 Days
                 print("Updateting Beta")
-                betaList = indicators.beta(tickers,config)
+                betaList = indicators.beta(tickers, config, session)
                 self.betaTS = currentTS
                 for key, value in enumerate(new_list):
                     for entry in betaList:
@@ -92,6 +93,7 @@ class Status():
                             new_list[key]["beta"] = entry["beta"]
             
             self.tickers = new_list
+            self.save_state()
         #else:
             #Send Report to BMD
 
@@ -103,7 +105,8 @@ class Status():
                 'market':self.market,
                 'serverTime':self.serverTime,
                 'margin':self.margin,
-                'balanceTS':self.balanceTS
+                'balanceTS':self.balanceTS,
+                'betaTS':self.betaTS
             }, file)
     
     def load_state(self):
@@ -116,6 +119,7 @@ class Status():
                 self.serverTime = state['serverTime']
                 self.margin = state['margin']
                 self.balanceTS = state['balanceTS']
+                self.betaTS = state['betaTS']
         else:
             print("State file not found")
             raise
@@ -132,12 +136,10 @@ class Config():
         self.weightRefinement = True if config["WEIGHT_REFINEMENT"] == "True" else False
 
 def create_session():
-    session = requests.Session()
+    session = LimiterSession(per_minute=200, burst=10)
     retry_strategy = Retry(
         total=3,
-        backoff_factor=1,
-        status_forcelist=[429, 500, 502, 503, 504],
-        method_whitelist=["HEAD", "GET", "POST", "DELETE"]
+        backoff_factor=1
     )
     adapter = HTTPAdapter(max_retries=retry_strategy)
     session.mount("https://", adapter)
@@ -168,7 +170,7 @@ def find_tickers(config):
                 "APCA-API-KEY-ID": config.apiKey,
                 "APCA-API-SECRET-KEY": config.apiSecret
             }
-            result = requests.get(assetURL, headers=headers)
+            result = session.get(assetURL, headers=headers)
 
             #Alpaca rate limit
             time.sleep(0.4)
@@ -291,7 +293,7 @@ def create_order(config, volume, direction, symbol, marketStatus="open", current
         "APCA-API-KEY-ID": config.apiKey,
         "APCA-API-SECRET-KEY": config.apiSecret
     }
-    response = requests.post(url, json=payload, headers=headers)
+    response = session.post(url, json=payload, headers=headers)
     if marketStatus == "open":
         if str(response.status_code) == '200':
             json_response = response.json()
@@ -304,7 +306,7 @@ def create_order(config, volume, direction, symbol, marketStatus="open", current
                     "APCA-API-KEY-ID": config.apiKey,
                     "APCA-API-SECRET-KEY": config.apiSecret
                 }
-                response = requests.get(url, headers=headers)
+                response = session.get(url, headers=headers)
                 if str(response.status_code) == '200':
                     json_response = response.json()
                     if json_response["status"] == "filled" or json_response["status"] == "canceled" or json_response["status"] == "expired":
@@ -319,8 +321,8 @@ def create_order(config, volume, direction, symbol, marketStatus="open", current
             return "success"
         else:
             print(" "*150, end="\r", flush=True)
-            print(result.reason)
-            print(result.text)
+            print(response.reason)
+            print(response.text)
             return "failed"
     else:
         if str(response.status_code) == '200':
@@ -339,7 +341,7 @@ def get_account(config):
         "APCA-API-KEY-ID": config.apiKey,
         "APCA-API-SECRET-KEY": config.apiSecret
     }
-    response = requests.get(url, headers=headers)
+    response = session.get(url, headers=headers)
     json_response = response.json()
     return json_response
 
@@ -351,7 +353,7 @@ def get_balances(config):
         "APCA-API-SECRET-KEY": config.apiSecret
     }
 
-    response = requests.get(url, headers=headers)
+    response = session.get(url, headers=headers)
     json_response = response.json()
     return json_response
 
@@ -363,7 +365,7 @@ def get_balance(config, symbol):
         "APCA-API-SECRET-KEY": config.apiSecret
     }
 
-    response = requests.get(url, headers=headers)
+    response = session.get(url, headers=headers)
     if str(response.status_code) == "200":
         json_response = response.json()
         return float(json_response["qty"])
@@ -393,7 +395,7 @@ def day_end(account,config):
         "APCA-API-KEY-ID": config.apiKey,
         "APCA-API-SECRET-KEY": config.apiSecret
     }
-    response = requests.get(url, headers=headers)
+    response = session.get(url, headers=headers)
     json_response = response.json()
     for entry in json_response:
         if entry["activity_type"] == "CSD":
@@ -414,36 +416,25 @@ def day_end(account,config):
     }
     requests.post(url=url,json=payload)
 
-def checkin(ts):
+"""
+
+def checkIn(ts, account):
+    """
+    Basic Check In to BMD
+    """
     url = 'https://www.bmd-studios.com/bot'
     headers = {
         "accept": "application/json"
     }
     payload={
-        "id":"02",
-        "bot_name":"Alpaca",
+        "id":"03",
+        "bot_name":"Alpaca Test",
         "ts":str(ts),
-        "status":status["trading"]
+        "status":account.market
     }
     requests.post(url=url,json=payload)
 
-    #Sending general info to bmd
 
-    general_json = account
-    general_json["dt_count"] = status["dt_count"]
-
-    url = 'https://www.bmd-studios.com/general'
-    headers = {
-        "accept": "application/json"
-    }
-    payload={
-        "id":"02",
-        "ts":str(ts),
-        "name":"Alpaca",
-        "json_string":json.dumps(account)
-    }
-    requests.post(url=url,json=payload)
-"""
 @bmd_logger
 def bot(account,config):
     headers = {
@@ -460,7 +451,7 @@ def bot(account,config):
         account.check_ticker(config)
         print("Finding open limit orders")
         ordersURL = "{}markets/v2/orders".format(config.urlBase) # Finding un-recorded open limit orders
-        result = requests.get(ordersURL, headers=headers)
+        result = session.get(ordersURL, headers=headers)
         if str(result.status_code) == "200":
             jsonResult = result.json()
             for item in jsonResult:
@@ -474,7 +465,7 @@ def bot(account,config):
 
 
     url = "{}markets/v2/clock".format(config.urlBase)
-    result = requests.get(url, headers=headers)
+    result = session.get(url, headers=headers)
     if str(result.status_code) == "200":
         jsonResult = result.json()
         time_string = jsonResult["timestamp"]
@@ -499,16 +490,17 @@ def bot(account,config):
                 print(" "*150, end="\r", flush=True)
                 print("Checking if {}-{}-{} is a holiday".format(str(dt_object.year),str(dt_object.month),str(dt_object.day)),end="\r", flush=True)
                 startDate = "start={}-{}-{} 00:00:00".format(str(dt_object.year), str(dt_object.month), str(dt_object.day))
-                dt_next_day = dt_object + datetime.timedelta(days=1)
-                endDate = "end={}-{}-{} 00:00:00".format(str(dt_next_day.year), str(dt_next_day.month), str(dt_next_day.day))
+                endDate = "end={}-{}-{} 00:00:00".format(str(dt_object.year), str(dt_object.month), str(dt_object.day))
                 url = "{}markets/v2/calendar?{}&{}".format(config.urlBase,startDate,endDate)
-                result = requests.get(url, headers=headers)
+                result = session.get(url, headers=headers)
                 if str(result.status_code) == '200':
                     jsonResult = result.json()
                     if len(jsonResult) < 1:
                         print(" "*150, end="\r", flush=True)
                         print("{}:{} ~ Market closed for the day".format(str(dt_object.hour),str(dt_object.minute)), flush=True)
                         account.market = "holiday"
+                        account.save_state()
+                        checkIn(int(time.time()), account)
                         time.sleep(61200)
                     else:
                         print(" "*150, end="\r", flush=True)
@@ -546,7 +538,7 @@ def bot(account,config):
                 ticker_list.append(ticker["ticker"])
             tickersStr = "%2C".join(ticker_list)
             snapshotURL = "https://data.alpaca.markets/v2/stocks/snapshots?symbols={}&feed=iex".format(tickersStr)
-            result = requests.get(snapshotURL, headers=headers)
+            result = session.get(snapshotURL, headers=headers)
             if str(result.status_code) == "200":
                 jsonResult = result.json()
                 for key,ticker in enumerate(account.tickers):
@@ -561,29 +553,25 @@ def bot(account,config):
                 print(result.reason)
                 print(result.text)
             
+            marketTrend = 0
+            marketRSI = 0
+            for ticker in account.tickers:
+                marketTrend += ticker["trend"]
+                marketRSI += ticker["rsi"]
+            marketTrend = marketTrend/len(account.tickers)
+            marketRSI = marketRSI/len(account.tickers)
+            generalTrend = (marketTrend+(marketRSI/50))/2
+
 
             for key, ticker in enumerate(account.tickers):
-                weight = 1
-                if ticker["rsi"] < 25:
-                    rsiFactor = (25-ticker["rsi"])/25
-                    weight = 1+(0.4*(rsiFactor))
-                    weight = min(1.3, weight)
-                elif ticker["rsi"] > 70:
-                    rsiFactor = (ticker["rsi"]-70)/30
-                    weight = 1-(0.4*(rsiFactor))
-                    weight = max(0.7, weight)
-                else:
-                    rsiFactor = (ticker["rsi"]-50)/50
-                    trendFactor = ticker["trend"]-1
-                    momentumScore = (rsiFactor+trendFactor)/2
-                    weight = 1+(0.3*(momentumScore))
-                    weight = max(0.8, min(1.2, weight))
+                weight = 1+(2*(generalTrend-1))
+                weight = max(0.5, min(1, weight)) #Adjustment capped at 50% during downwards trend
                 balance_value = baseBalance*weight if config.weightRefinement else baseBalance
                 
 
                 if ticker["limitTrade"]["open"]:    #Checking open limit orders
-                    openURL = "{}markets/v2/orders/{}".format(config.urlBase,ticker["limitTrade"]["id"])
-                    result = requests.delete(openURL, headers=headers)
+                    openURL = f"{config.urlBase}markets/v2/orders/{ticker['limitTrade']['id']}"
+                    result = session.get(openURL, headers=headers)
                     if str(result.status_code) == "200":
                         jsonResult = result.json()
                         if jsonResult["status"] == "filled" or jsonResult["status"] == "canceled" or jsonResult["status"] == "expired":
@@ -595,7 +583,7 @@ def bot(account,config):
                                 account.tickers[key]["volume"] = newVolume
                         elif (account.serverTime - ticker["limitTrade"]["ts"]) > 300:    #Removing old limit orders
                             deleteURL = "{}markets/v2/orders/{}".format(config.urlBase,ticker["limitTrade"]["id"])
-                            result = requests.delete(deleteURL, headers=headers)
+                            result = session.delete(deleteURL, headers=headers)
                             print(" "*150, end="\r", flush=True)
                             if str(result.status_code) == "204":
                                 print("Cancelled old limit order")
@@ -637,9 +625,9 @@ def bot(account,config):
                         account.tickers[key]["limitTrade"]["ts"] = account.serverTime
 
                 beta= ticker["beta"]
-                marginFactor = 1+(math.log(max(0.1, beta))/math.log(2))     #logarithmic scaling
-                margin = config.margin * marginFactor if config.dynamicMargin else config.margin
-                margin = min(config.margin*2, max(config.margin*.5, margin))
+                marginFactor = 1+(math.log(max(0.1, abs(beta)))/math.log(2))     #logarithmic scaling, [-2,2]
+                margin = config.margin *(1+(0.2 * marginFactor)) if config.dynamicMargin else config.margin #Factor affects 20% of margin
+                margin = min(config.margin*1.3, max(config.margin*.7, margin))  #Adjustment caps at 30%
 
                 if not ticker["limitTrade"]["open"]:    #Balance ticker if no limit trade open
                     if (ticker["volume"]*ticker["price"]) > balance_value:
@@ -653,7 +641,7 @@ def bot(account,config):
                             result = create_order(config,sell_value,"sell",ticker["ticker"],account.market,ticker["price"],"value")
                             print(" "*150, end="\r", flush=True)
                             if result == "success":
-                                print("Sold ${} of {} Trend:{}/1 Beta:{}/1".format(str(sell_value),ticker["ticker"], weight, ticker["beta"]), flush=True)
+                                print("Sold ${} of {}".format(str(sell_value),ticker["ticker"]), flush=True)
                                 newVolume = get_balance(config,ticker["ticker"])
                                 if newVolume:
                                     account.tickers[key]["volume"] = newVolume
@@ -677,7 +665,7 @@ def bot(account,config):
                             result = create_order(config,buy_value,"buy",ticker["ticker"],account.market,ticker["price"],"value")
                             print(" "*150, end="\r", flush=True)
                             if result == "success":
-                                print("Bought ${} of {} Trend:{}/1 Beta:{}/1".format(str(buy_value),ticker["ticker"],weight,ticker["beta"]), flush=True)
+                                print("Bought ${} of {}".format(str(buy_value),ticker["ticker"]), flush=True)
                                 newVolume = get_balance(config,ticker["ticker"])
                                 if newVolume:
                                     account.tickers[key]["volume"] = newVolume
@@ -717,6 +705,7 @@ def bot(account,config):
                     
 
 
+session = create_session() #For Alpaca requests
 
 if __name__=="__main__":
     account = Status()
@@ -726,12 +715,17 @@ if __name__=="__main__":
     except Exception as e:
         account.save_state()
     config = Config()
+    checkInTS = 0
     while True:
         try:
             config.update()
             account.margin = config.margin
             bot(account,config)
             account.save_state()
+            ts = int(time.time())
+            if ts - checkInTS > 60:
+                checkIn(ts, account)
+                checkInTS = ts
         except Exception as e:
             account.load_state()
             raise

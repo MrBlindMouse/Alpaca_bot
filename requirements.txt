@@ -1,4 +1,4 @@
 python-dotenv
 requests
 beautifulsoup4
-pickle
+requests-ratelimiter

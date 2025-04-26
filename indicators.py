@@ -5,7 +5,7 @@ def trunc(value,digits):
     x = 10**digits
     return int(value*x)/x
 
-def beta(tickers,config):
+def beta(tickers,config, session):
     """Returns beta(volatility) values for supplied tickers, over 1 year period. Baseline is 1"""
     headers = {
         "accept": "application/json",
@@ -17,8 +17,8 @@ def beta(tickers,config):
     today = datetime.date.today()
     oldDate = today - datetime.timedelta(days=365)
     for ticker in tickers:
-        url = "https://data.alpaca.markets/v2/stocks/{}/bars?timeframe=1D&start={}&end={}&limit=1000&adjustment=split&feed=iex&sort=asc".format(ticker,oldDate,today)
-        result = requests.get(url, headers=headers)
+        url = f"https://data.alpaca.markets/v2/stocks/{ticker}/bars?timeframe=1D&start={oldDate}&end={today}&limit=1000&adjustment=split&feed=iex&sort=asc"
+        result = session.get(url, headers=headers)
 
         # Alpaca API Rate limit
         time.sleep(0.4)
@@ -39,7 +39,7 @@ def beta(tickers,config):
         returnList = []
         for key,close in enumerate(ticker["closeList"]):
             if key != 0:
-                dailyReturn = (ticker["closeList"][key-1]-ticker["closeList"][key])/ticker["closeList"][key-1]
+                dailyReturn = (ticker["closeList"][key]-ticker["closeList"][key-1])/ticker["closeList"][key-1]
                 returnList.append(dailyReturn)
         avgRetruns = sum(returnList)/len(returnList)
         details = {
@@ -68,21 +68,28 @@ def beta(tickers,config):
     for day in range(days):
         variance += (indexReturns[day]-indexAvgReturn)**2
     variance = variance/days
-
     #Finding covariance and calculation beta per ticker
     beta = []
     for details in returns:
         covariance = 0
-        for day in range(days):
-            covariance += (details["returns"][day]-details["avgReturn"])*(indexReturns[day]-indexAvgReturn)
-        covariance = covariance/days
-        beta.append({
-            "ticker":details["ticker"],
-            "beta":trunc((covariance/variance),2)
-        })
+        try:
+            for day in range(days):
+                covariance += (details["returns"][day]-details["avgReturn"])*(indexReturns[day]-indexAvgReturn)
+            covariance = covariance/days
+            beta.append({
+                "ticker":details["ticker"],
+                "beta":trunc((covariance/variance),2)
+            })
+        except Exception as e:
+            print(e)
+            beta.append({
+                "ticker":details["ticker"],
+                "beta":1
+            })
+
     return beta
     
-def trend(tickers,config):
+def trend(tickers,config, session):
     """
     Returns RSI value and SMA trend for supplied tickers
     rsi: 70~50 is trending up, 50~25 is trending down, >70 is over bought, <30 is oversold
@@ -99,8 +106,8 @@ def trend(tickers,config):
     today = datetime.date.today()
     oldDate = today - datetime.timedelta(days=90)
     for ticker in tickers:
-        url = "https://data.alpaca.markets/v2/stocks/{}/bars?timeframe=1D&start={}&end={}&limit=1000&adjustment=split&feed=iex&sort=asc".format(ticker,oldDate,today)
-        result = requests.get(url, headers=headers)
+        url = f"https://data.alpaca.markets/v2/stocks/{ticker}/bars?timeframe=1D&start={oldDate}&end={today}&limit=1000&adjustment=split&feed=iex&sort=asc"
+        result = session.get(url, headers=headers)
 
         # Alpaca API Rate limit
         time.sleep(0.4)
