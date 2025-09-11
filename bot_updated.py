@@ -297,7 +297,7 @@ def day_end(account=Status, config=Config):
         "cost": trunc(cost, 2),
         "investment": trunc(investment, 2)
     }
-    #requests.post(url=url, json=payload)
+    requests.post(url=url, json=payload)
 
 def check_in(ts, account=Status, config=Config):
     url = 'https://www.bmd-studios.com/bot'
@@ -331,7 +331,7 @@ def check_in(ts, account=Status, config=Config):
         "name": "Alpaca",
         "json_string": display_str
     }
-    #requests.post(url=url, json=payload)
+    requests.post(url=url, json=payload)
 
 def check_balances(account=Status, config=Config):
     if account.market not in ["closed", "holiday"]:
