@@ -357,7 +357,7 @@ def bot():
         total = float(base["cash"])
         for entry in balances:
             total += float(entry["market_value"])
-        balance_value = total/(int(config["BOTNUMBER"])+(int(config["BOTNUMBER"])*float(config["MARGIN"])*2))
+        balance_value = total/(int(config["BOTNUMBER"])+(int(config["BOTNUMBER"])*float(config["MARGIN"])*1.1))
         with open("topEquities.json", "r") as file:
             equity_list = json.loads(file.read())
             for entry in balances:
@@ -539,7 +539,7 @@ def bot():
                 print_str += str(account_symbols[i])+":limit | "
             else:
                 if account_symbols[i] == 'dt_count':
-                    print_str += str(account_symbols[i])+":"+str(trunc(account_values[i]*100,1))+" | "
+                    print_str += str(account_symbols[i])+":"+str(account_values[i])+" | "
                 else:
                     print_str += str(account_symbols[i])+":"+str(trunc(account_values[i]*100,1))+"% | "
         print(" "*150, end="\r", flush=True)
