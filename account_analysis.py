@@ -5,9 +5,10 @@ import requests
 class Config():
     def update(self):
         config = dotenv_values(".env")
+        self.title = "Alpaca Test" if config["VERSION"] == "PAPER" else "Alpaca"
         self.urlBase = "https://paper-api.alpaca." if config["VERSION"] == "PAPER" else "https://api.alpaca."
-        self.apiKey = config["API_KEY"]
-        self.apiSecret = config["API_SECRET"]
+        self.apiKey = config["PAPER_KEY"] if config["VERSION"] == "PAPER" else config["API_KEY"]
+        self.apiSecret = config["PAPER_SECRET"] if config["VERSION"] == "PAPER" else config["API_KEY"]
         self.poligonKey = config["POLIGON_KEY"]
         self.margin = float(config["MARGIN"])
         self.dynamicMargin = True if config["DYNAMIC_MARGIN"] == "True" else False
@@ -92,6 +93,6 @@ def checkTrends(tickers=[]):
 
 
 if __name__ == "__main__":
-    #checkEquity()
+    checkEquity()
     
     checkTrends()

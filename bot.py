@@ -6,6 +6,7 @@ from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 from requests_ratelimiter import LimiterSession
 import pickle
+import schedule
 import indicators
 
 
@@ -18,10 +19,9 @@ class Status():
         self.market = "closed"
         self.serverTime = 0
         self.margin = 0
-        self.balanceTS = 0
-        self.betaTS = 0
 
     def check_balances(self, positions, config):
+        "Updating Ticker qty, or liquidating if not found"
         for item in positions:
             found = False
             for key,ticker in enumerate(self.tickers):
@@ -83,19 +83,24 @@ class Status():
                         new_list[key]["rsi"] = entry["rsi"]
                         new_list[key]["trend"] = entry["trend"]
             currentTS = int(time.time())
-            if (currentTS - self.betaTS) > 604800: #7 Days
-                print("Updateting Beta")
-                betaList = indicators.beta(tickers, config, session)
-                self.betaTS = currentTS
-                for key, value in enumerate(new_list):
-                    for entry in betaList:
-                        if new_list[key]["ticker"] == entry["ticker"]:
-                            new_list[key]["beta"] = entry["beta"]
+            print("Updateting Beta")
+            betaList = indicators.beta(tickers, config, session)
+            self.betaTS = currentTS
+            for key, value in enumerate(new_list):
+                for entry in betaList:
+                    if new_list[key]["ticker"] == entry["ticker"]:
+                        new_list[key]["beta"] = entry["beta"]
             
             self.tickers = new_list
             self.save_state()
-        #else:
-            #Send Report to BMD
+            generalTrend = 0
+            for item in self.tickers:
+                generalTrend += ((item["rsi"]/50)+item["trend"])/2
+            generalTrend = generalTrend/len(self.tickers)
+            logPost(f'General Market Trend: {generalTrend:3f}', config.title, '1')
+        else:
+            logPost("Tickers not scraped!", config.title, '3')
+            time.sleep(5*60)
 
     def save_state(self):
         with open(self.STATE_FILE, 'wb') as file:
@@ -104,9 +109,7 @@ class Status():
                 'equity':self.equity,
                 'market':self.market,
                 'serverTime':self.serverTime,
-                'margin':self.margin,
-                'balanceTS':self.balanceTS,
-                'betaTS':self.betaTS
+                'margin':self.margin
             }, file)
     
     def load_state(self):
@@ -118,8 +121,6 @@ class Status():
                 self.market = state['market']
                 self.serverTime = state['serverTime']
                 self.margin = state['margin']
-                self.balanceTS = state['balanceTS']
-                self.betaTS = state['betaTS']
         else:
             print("State file not found")
             raise
@@ -127,10 +128,10 @@ class Status():
 class Config():
     def update(self):
         config = dotenv_values(".env")
+        self.title = "Alpaca Test" if config["VERSION"] == "PAPER" else "Alpaca"
         self.urlBase = "https://paper-api.alpaca." if config["VERSION"] == "PAPER" else "https://api.alpaca."
-        self.apiKey = config["API_KEY"]
-        self.apiSecret = config["API_SECRET"]
-        self.poligonKey = config["POLIGON_KEY"]
+        self.apiKey = config["PAPER_KEY"] if config["VERSION"] == "PAPER" else config["API_KEY"]
+        self.apiSecret = config["PAPER_SECRET"] if config["VERSION"] == "PAPER" else config["API_SECRET"]
         self.margin = float(config["MARGIN"])
         self.dynamicMargin = True if config["DYNAMIC_MARGIN"] == "True" else False
         self.weightRefinement = True if config["WEIGHT_REFINEMENT"] == "True" else False
@@ -146,22 +147,20 @@ def create_session():
     return session
 
 def find_tickers(config):
-    url = "https://www.slickcharts.com/nasdaq100"
-    result = requests.get(url,headers={'User-Agent': 'Mozilla/5.0'})
-    tickers = None
+    url = "https://www.nasdaq.com/solutions/global-indexes/nasdaq-100/companies"
+    result = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
+    tickers = []
     if str(result.status_code) == '200':
-        parsedResult = BeautifulSoup(result.content, 'html.parser')
-        tableBody = parsedResult.find('tbody', id="companyListComponent")
-        tableRows = tableBody.find_all('tr')
-        for line in tableRows:
-            tableCell = line.find_all('td')
-            i=0
-            for cell in tableCell:
-                if i == 2:
-                    if not tickers:
-                        tickers = []
-                    tickers.append(cell.text)
-                i += 1
+        parsed_result = BeautifulSoup(result.content, 'html.parser')
+        tables = parsed_result.find_all('tbody')
+        for table in tables:
+            rows = table.find_all('tr')
+            data = rows[0].find_all('td')
+            if data[0].text == "Symbol" and data[1].text == "Company Name":
+                for entry in rows[1:]:
+                    tickers.append(entry.find_all('td')[0].text)
+            if len(tickers) > 0:
+                break
         for key, ticker in enumerate(tickers):
             assetURL = "{}markets/v2/assets/{}".format(config.urlBase, ticker)
             headers = {
@@ -197,6 +196,34 @@ def trunc(value,digits):
     x = 10**digits
     return int(value*x)/x
 
+
+def logPost(snippet, title, code='2'):
+    """
+    Code '1': Info
+    Code '2': Error
+    Code '3': Emergency
+    """
+    payload = {
+        "code": code,
+        "app": title,
+        "snippet": snippet
+    }
+    try:
+        result = requests.post("https://www.bmd-studios.com/log", json=payload)
+        if result.status_code != 200:
+            print(" "*150, end="\r", flush=True)
+            print("Logging Error")
+            print("Status code: "+str(result.status_code))
+            print(result.text)
+            print('Original exception: ')
+            print(snippet)
+    except Exception as c:
+        print(" "*150, end="\r", flush=True)
+        print("Logging server down . . .")
+        print(str(c))
+        print('Original exception: ')
+        print(snippet)
+
 def bmd_logger(function):
     def exception_handler(*args, **kwargs):
         try:
@@ -210,24 +237,7 @@ def bmd_logger(function):
             for line in message.format():
                 post_message += line+'<br>'
             post_message += str(exc_type)+'\n<br>'+str(exc_value)
-            payload = {
-                "code": "2",
-                "app": "Alpaca",
-                "snippet": post_message
-            }
-            try:
-                result = requests.post("https://www.bmd-studios.com/log", json=payload)
-                if result.status_code != 200:
-                    print("Logging Error")
-                    print("Status code: "+str(result.status_code))
-                    print(result.text)
-                    print('Original exception: ')
-                    print(post_message)
-            except Exception as c:
-                print("BMD logger server down . . .")
-                print(str(c))
-                print('Original exception: ')
-                print(post_message)
+            logPost(post_message, config.title, '2')
             time.sleep(10)
     return exception_handler
 
@@ -335,6 +345,7 @@ def create_order(config, volume, direction, symbol, marketStatus="open", current
             return "failed"
 
 def get_account(config):
+    "Returns account info"
     url = "{}markets/v2/account".format(config.urlBase)
     headers = {
         "accept": "application/json",
@@ -345,39 +356,45 @@ def get_account(config):
     json_response = response.json()
     return json_response
 
-def get_balances(config):
-    url = "{}markets/v2/positions".format(config.urlBase)
+def get_balances(config, symbol=None):
+    """
+    Return positions of given symbol, or all symbols if none supplied
+    """
     headers = {
         "accept": "application/json",
         "APCA-API-KEY-ID": config.apiKey,
         "APCA-API-SECRET-KEY": config.apiSecret
     }
+    if symbol:
+        url = f"{config.urlBase}markets/v2/positions/{symbol}"
 
-    response = session.get(url, headers=headers)
-    json_response = response.json()
-    return json_response
-
-def get_balance(config, symbol):
-    url = "{}markets/v2/positions/{}".format(config.urlBase,symbol)
-    headers = {
-        "accept": "application/json",
-        "APCA-API-KEY-ID": config.apiKey,
-        "APCA-API-SECRET-KEY": config.apiSecret
-    }
-
-    response = session.get(url, headers=headers)
-    if str(response.status_code) == "200":
-        json_response = response.json()
-        return float(json_response["qty"])
+        response = session.get(url, headers=headers)
+        if response.status_code == 200:
+            json_response = response.json()
+            return float(json_response["qty"])
+        else:
+            print(" "*150, end="\r", flush=True)
+            print(f"Error finding {symbol} balance", flush=True)
+            print(response.reason)
+            print(response.text)
+            return None
     else:
-        print(" "*150, end="\r", flush=True)
-        print("Error finding {} balance".format(symbol), flush=True)
-        print(response.reason)
-        print(response.text)
-        return None
+        url = f"{config.urlBase}markets/v2/positions"
 
-"""
-def day_end(account,config):
+        response = session.get(url, headers=headers)
+        if response.status_code == 200:
+            json_response = response.json()
+            return json_response
+        else:
+            print(" "*150, end="\r", flush=True)
+            print("Error finding balances", flush=True)
+            print(response.reason)
+            print(response.text)
+            return None
+
+def day_end(account=Status, config=Config):
+    if account.market == "holiday":
+        return
     balances = get_balances()
     base = get_account()
     cash = float(base["cash"])
@@ -389,7 +406,7 @@ def day_end(account,config):
         equity += float(entry["market_value"])
         cost += float(entry["cost_basis"])
 
-    url = config.urlBase+"markets/v2/account/activities?activity_types=CSD,CSW&direction=desc&page_size=100"
+    url = f"{config.urlBase}markets/v2/account/activities?activity_types=CSD,CSW&direction=desc&page_size=100"
     headers = {
         "accept": "application/json",
         "APCA-API-KEY-ID": config.apiKey,
@@ -416,9 +433,7 @@ def day_end(account,config):
     }
     requests.post(url=url,json=payload)
 
-"""
-
-def checkIn(ts, account):
+def checkIn(ts, account=Status, config=Config):
     """
     Basic Check In to BMD
     """
@@ -428,64 +443,138 @@ def checkIn(ts, account):
     }
     payload={
         "id":"03",
-        "bot_name":"Alpaca Test",
+        "bot_name":config.title,
         "ts":str(ts),
         "status":account.market
     }
+    if config.title == 'Alpaca':
+        payload["id"] = '02'
     requests.post(url=url,json=payload)
 
+    url = 'https://www.bmd-studios.com/general'
+    
+    marketTrend = 0
+    marketRSI = 0
+    for ticker in account.tickers:
+        marketTrend += ticker["trend"]
+        marketRSI += ticker["rsi"]
+    marketTrend = marketTrend/len(account.tickers)
+    marketRSI = marketRSI/len(account.tickers)
+    generalTrend = (marketTrend+(marketRSI/50))/2
 
-@bmd_logger
-def bot(account,config):
+    highTicker = {
+        "ticker":"",
+        "diff":0
+    }
+    secondTicker = {
+        "ticker":"",
+        "diff":0
+    }
+    for ticker in account.tickers:
+        if ticker["difference"] > highTicker["diff"]:
+            secondTicker["diff"] = highTicker["diff"]
+            secondTicker["ticker"] = highTicker["ticker"]
+            highTicker["diff"] = ticker["difference"]
+            highTicker["ticker"] = ticker["ticker"]
+        elif ticker["difference"] > secondTicker["diff"]:
+            secondTicker["diff"] = ticker["difference"]
+            secondTicker["ticker"] = ticker["ticker"]
+
+    displayStr = f"""
+    <p>Current Trend: {generalTrend}</p>
+    <p>Highest Swing: {highTicker["ticker"]}:{trunc(highTicker["diff"]*100,1)}%</p>
+    <p>Second Swing: {secondTicker["ticker"]}:{trunc(secondTicker["diff"]*100,1)}%</p>
+    """
+    payload={
+        "id":"02",
+        "ts":str(ts),
+        "name":"Alpaca",
+        "json_string":displayStr
+    }
+    requests.post(url=url,json=payload)
+
+def checkBalances(account=Status, config=Config):
+    if account.market not in ["closed","holiday","suspended"]:
+        positions = get_balances(config)
+        account.check_balances(positions, config)
+    elif account.market == "suspended":
+        positions = get_balances(config)
+        for item in positions:
+            print(" "*150, end="\r", flush=True)
+            print(f"Liquidating {item["symbol"]}")
+            closeURL = f"{config.urlBase}markets/v2/positions/{item["symbol"]}?percentage=100"
+            headers={
+                "accept": "application/json",
+                "content-type": "application/json",
+                "APCA-API-KEY-ID": config.apiKey,
+                "APCA-API-SECRET-KEY": config.apiSecret
+            }
+            result = session.delete(closeURL,headers=headers)
+            if result.status_code == 200:
+                jsonResult = result.json()
+                print(f"Status: {jsonResult["status"]}")
+            else:
+                print(f"Liquidation failed")
+                print(result.reason)
+                print(result.text)
+
+def checkTime(account=Status, config=Config, server="closed"):
     headers = {
         "accept": "application/json",
         "content-type": "application/json",
         "APCA-API-KEY-ID": config.apiKey,
         "APCA-API-SECRET-KEY": config.apiSecret
     }
-    if account.equity == 0:
-        print("Loading Alpaca Account data")
-        accountData = get_account(config)
-        account.equity = float(accountData["equity"])
-        print("Updating Tickers")
-        account.check_ticker(config)
-        print("Finding open limit orders")
-        ordersURL = "{}markets/v2/orders".format(config.urlBase) # Finding un-recorded open limit orders
-        result = session.get(ordersURL, headers=headers)
-        if str(result.status_code) == "200":
-            jsonResult = result.json()
-            for item in jsonResult:
-                for key,ticker in enumerate(account.tickers):
-                    if item["symbol"] == ticker["ticker"]:
-                        if not ticker["limitTrade"]["open"]:
-                            account.tickers[key]['limitTrade']["open"] = True
-                            account.tickers[key]['limitTrade']["id"] = item["id"]
-                            account.tickers[key]['limitTrade']["ts"] = 0
-                        break
-
-
+    
     url = "{}markets/v2/clock".format(config.urlBase)
     result = session.get(url, headers=headers)
-    if str(result.status_code) == "200":
+    if result.status_code == 200:
         jsonResult = result.json()
         time_string = jsonResult["timestamp"]
         time_string = time_string[:19]+time_string[-6:]
         dt_object = datetime.datetime.strptime(time_string,"%Y-%m-%dT%H:%M:%S%z")
         account.serverTime = int(dt_object.timestamp())
 
-        if (account.serverTime - account.balanceTS) > 3600:
-            positions = get_balances(config)
-            account.check_balances(positions, config)
-            account.balanceTS = account.serverTime
+
 
         if jsonResult["is_open"]:
+            if server != "open":
+                print("Updateting Equity List . . .")
+                account.check_ticker(config)
+                server = "open"
+
             if account.market == "extended":
                 print(" "*150, end="\r", flush=True)
                 print("Trade start for {}-{}-{}".format(str(dt_object.year),str(dt_object.month),str(dt_object.day)), flush=True)
-                print("Updateting Equity List . . .")
-                account.check_ticker(config)
-            account.market = "open"
-        elif int(dt_object.hour) >= 4 and int(dt_object.hour) < 20:
+                
+            if account.market != "suspended":
+                marketTrend = 0
+                marketRSI = 0
+                for ticker in account.tickers:
+                    marketTrend += ticker["trend"]
+                    marketRSI += ticker["rsi"]
+                marketTrend = marketTrend/len(account.tickers)
+                marketRSI = marketRSI/len(account.tickers)
+                generalTrend = (marketTrend+((marketRSI/100)+0.5))/2
+                if generalTrend < 0.85:
+                    account.market = "suspended"
+                else:
+                    account.market = "open"
+            else:
+                marketTrend = 0
+                marketRSI = 0
+                for ticker in account.tickers:
+                    marketTrend += ticker["trend"]
+                    marketRSI += ticker["rsi"]
+                marketTrend = marketTrend/len(account.tickers)
+                marketRSI = marketRSI/len(account.tickers)
+                generalTrend = (marketTrend+((marketRSI/100)+0.5))/2
+                if generalTrend > 0.95:
+                    account.market = "open"
+
+        elif int(dt_object.hour) >= 4 and int(dt_object.hour) < 20 and account.market!="suspended":
+            if server!="closed":
+                server="closed"
             if account.market == "closed":
                 print(" "*150, end="\r", flush=True)
                 print("Checking if {}-{}-{} is a holiday".format(str(dt_object.year),str(dt_object.month),str(dt_object.day)),end="\r", flush=True)
@@ -500,7 +589,7 @@ def bot(account,config):
                         print("{}:{} ~ Market closed for the day".format(str(dt_object.hour),str(dt_object.minute)), flush=True)
                         account.market = "holiday"
                         account.save_state()
-                        checkIn(int(time.time()), account)
+                        checkIn(int(time.time()), account, config)
                         time.sleep(61200)
                     else:
                         print(" "*150, end="\r", flush=True)
@@ -517,189 +606,223 @@ def bot(account,config):
                 account.market = "extended"
 
         else:
+            if server!="closed":
+                server="closed"
+
             if account.market == "closed":
                 print(" "*150, end="\r", flush=True)
                 print("{}:{}:{} ~ Market Closed, Equity: ${}".format(dt_object.hour,dt_object.minute,dt_object.second, str(account.equity)), end="\r", flush=True)
-                time.sleep(180)
-            else:
-                print(" "*150, end="\r", flush=True)
-                print("Market Closed for {}-{}-{}".format(str(dt_object.year),str(dt_object.month),str(dt_object.day)), flush=True)
+            elif account.market!="suspended":
                 account.market = "closed"
-
-
-        if account.market != "closed" and account.market != "holiday":
-            accountData = get_account(config)
-            total_pos = len(account.tickers)
-            account.equity = float(accountData["equity"])
-            baseBalance = account.equity/(total_pos+(total_pos*account.margin))
-
-            ticker_list = []
-            for ticker in account.tickers:
-                ticker_list.append(ticker["ticker"])
-            tickersStr = "%2C".join(ticker_list)
-            snapshotURL = "https://data.alpaca.markets/v2/stocks/snapshots?symbols={}&feed=iex".format(tickersStr)
-            result = session.get(snapshotURL, headers=headers)
-            if str(result.status_code) == "200":
-                jsonResult = result.json()
-                for key,ticker in enumerate(account.tickers):
-                    #if float(jsonResult[ticker["ticker"]]["latestQuote"]["bp"]) != 0 and float(jsonResult[ticker["ticker"]]["latestQuote"]["ap"]) != 0:
-                    #    account.tickers[key]["price"] = (float(jsonResult[ticker["ticker"]]["latestQuote"]["bp"])+float(jsonResult[ticker["ticker"]]["latestQuote"]["ap"]))/2
-                    #else:
-                    account.tickers[key]["price"] = float(jsonResult[ticker["ticker"]]["minuteBar"]["vw"])
-
-            else:
-                print("Error calling new snapshot")
-                print(str(result.status_code))
-                print(result.reason)
-                print(result.text)
-            
-            marketTrend = 0
-            marketRSI = 0
-            for ticker in account.tickers:
-                marketTrend += ticker["trend"]
-                marketRSI += ticker["rsi"]
-            marketTrend = marketTrend/len(account.tickers)
-            marketRSI = marketRSI/len(account.tickers)
-            generalTrend = (marketTrend+(marketRSI/50))/2
-
-
-            for key, ticker in enumerate(account.tickers):
-                weight = 1+(2*(generalTrend-1))
-                weight = max(0.5, min(1, weight)) #Adjustment capped at 50% during downwards trend
-                balance_value = baseBalance*weight if config.weightRefinement else baseBalance
                 
-
-                if ticker["limitTrade"]["open"]:    #Checking open limit orders
-                    openURL = f"{config.urlBase}markets/v2/orders/{ticker['limitTrade']['id']}"
-                    result = session.get(openURL, headers=headers)
-                    if str(result.status_code) == "200":
-                        jsonResult = result.json()
-                        if jsonResult["status"] == "filled" or jsonResult["status"] == "canceled" or jsonResult["status"] == "expired":
-                            account.tickers[key]["limitTrade"]["open"] = False
-                            account.tickers[key]["limitTrade"]["id"] = ""
-                            account.tickers[key]["limitTrade"]["ts"] = account.serverTime
-                            newVolume = get_balance(config,ticker["ticker"])
-                            if newVolume and newVolume != ticker["volume"]:
-                                account.tickers[key]["volume"] = newVolume
-                        elif (account.serverTime - ticker["limitTrade"]["ts"]) > 300:    #Removing old limit orders
-                            deleteURL = "{}markets/v2/orders/{}".format(config.urlBase,ticker["limitTrade"]["id"])
-                            result = session.delete(deleteURL, headers=headers)
-                            print(" "*150, end="\r", flush=True)
-                            if str(result.status_code) == "204":
-                                print("Cancelled old limit order")
-                            else:
-                                print("Failed to cancel old limit order", flush=True)
-                                print(str(result.status_code))
-                                print(result.reason)
-                                print(result.text)
-                            account.tickers[key]["limitTrade"]["open"] = False
-                            account.tickers[key]["limitTrade"]["id"] = ""
-                            account.tickers[key]["limitTrade"]["ts"] = account.serverTime
-                    else:
-                        print(" "*150, end="\r", flush=True)
-                        print("Failed to check open order: {}".format(ticker["limitTrade"]["id"]))
-                        print(result.reason)
-                        print(result.text)
-                        account.tickers[key]["limitTrade"]["open"] = False
-                        account.tickers[key]["limitTrade"]["id"] = ""
-                        account.tickers[key]["limitTrade"]["ts"] = account.serverTime
-                        newVolume = get_balance(config,ticker["ticker"])
-                        if newVolume and newVolume != ticker["volume"]:
-                            account.tickers[key]["volume"] = newVolume
-
-                if ticker["volume"] == 0 and not ticker["limitTrade"]["open"]:   #Buy initial shares
-                    result = create_order(config,balance_value,"buy",ticker["ticker"],account.market,ticker["price"],"value")
-                    print(" "*150, end="\r", flush=True)
-                    print("Buyinf initial {} shares".format(ticker["ticker"]), flush=True)
-                    if result == "success":
-                        print("Bought ${} of {}".format(balance_value,ticker["ticker"]), )
-                        newVolume = get_balance(config,ticker["ticker"])
-                        if newVolume and newVolume != ticker["volume"]:
-                            account.tickers[key]["volume"] = newVolume
-                    elif result == "failed":
-                        print("Failed to buy ${} of {}".format(balance_value,ticker["ticker"]), )
-                    else:
-                        print("Place limit order to buy ${} of {}".format(balance_value,ticker["ticker"]), )
-                        account.tickers[key]["limitTrade"]["open"] = True
-                        account.tickers[key]["limitTrade"]["id"] = result
-                        account.tickers[key]["limitTrade"]["ts"] = account.serverTime
-
-                beta= ticker["beta"]
-                marginFactor = 1+(math.log(max(0.1, abs(beta)))/math.log(2))     #logarithmic scaling, [-2,2]
-                margin = config.margin *(1+(0.2 * marginFactor)) if config.dynamicMargin else config.margin #Factor affects 20% of margin
-                margin = min(config.margin*1.3, max(config.margin*.7, margin))  #Adjustment caps at 30%
-
-                if not ticker["limitTrade"]["open"]:    #Balance ticker if no limit trade open
-                    if (ticker["volume"]*ticker["price"]) > balance_value:
-                        diff = ((ticker["volume"]*ticker["price"])-balance_value)/balance_value
-                        if diff < margin:
-                            account.tickers[key]["difference"] = diff
-                        elif diff > ticker["difference"]:
-                            account.tickers[key]["difference"] = diff
-                        elif diff < (ticker["difference"]*(1-((ticker["difference"]+margin)/2))) and diff > margin:
-                            sell_value = (ticker["volume"]*ticker["price"])-balance_value
-                            result = create_order(config,sell_value,"sell",ticker["ticker"],account.market,ticker["price"],"value")
-                            print(" "*150, end="\r", flush=True)
-                            if result == "success":
-                                print("Sold ${} of {}".format(str(sell_value),ticker["ticker"]), flush=True)
-                                newVolume = get_balance(config,ticker["ticker"])
-                                if newVolume:
-                                    account.tickers[key]["volume"] = newVolume
-                            elif result == "failed":
-                                print("Failed to sell ${} of {}".format(str(sell_value),ticker["ticker"]))
-                            else:
-                                print("Place limit order to sell ${} of {}".format(str(sell_value),ticker["ticker"]))
-                                account.tickers[key]["limitTrade"]["open"] = True
-                                account.tickers[key]["limitTrade"]["id"] = result
-                                account.tickers[key]["limitTrade"]["ts"] = account.serverTime
-
-
-                    elif (ticker["volume"]*ticker["price"]) < balance_value:
-                        diff = (balance_value-(ticker["volume"]*ticker["price"]))/balance_value
-                        if diff < margin:
-                            account.tickers[key]["difference"] = diff
-                        elif diff > ticker["difference"]:
-                            account.tickers[key]["difference"] = diff
-                        elif diff < (ticker["difference"]*(1-((ticker["difference"]+margin)/2))) and diff > margin:
-                            buy_value = (balance_value-(ticker["volume"]*ticker["price"]))
-                            result = create_order(config,buy_value,"buy",ticker["ticker"],account.market,ticker["price"],"value")
-                            print(" "*150, end="\r", flush=True)
-                            if result == "success":
-                                print("Bought ${} of {}".format(str(buy_value),ticker["ticker"]), flush=True)
-                                newVolume = get_balance(config,ticker["ticker"])
-                                if newVolume:
-                                    account.tickers[key]["volume"] = newVolume
-                            elif result == "failed":
-                                print("Failed to buy ${} of {}".format(str(buy_value),ticker["ticker"]))
-                            else:
-                                print("Place limit order to buy ${} of {}".format(str(buy_value),ticker["ticker"]))
-                                account.tickers[key]["limitTrade"]["open"] = True
-                                account.tickers[key]["limitTrade"]["id"] = result
-                                account.tickers[key]["limitTrade"]["ts"] = account.serverTime
-
-                    else:
-                        account.tickers[key]["difference"] = 0
-
-            highTicker = {
-                "ticker":"",
-                "diff":0
-            }
-            for ticker in account.tickers:
-                if ticker["difference"] > highTicker["diff"]:
-                    highTicker["diff"] = ticker["difference"]
-                    highTicker["ticker"] = ticker["ticker"]
-
-            print(" "*150, end="\r", flush=True)
-            print("{}:{}:{} ~ '{}' trade, Equity: ${}; Highest Swing {}:{}% Balance Value: ${}".format(dt_object.hour,dt_object.minute,dt_object.second,account.market.upper(),account.equity,highTicker["ticker"],trunc(highTicker["diff"]*100,1),trunc(baseBalance,2)), end="\r", flush=True)
-            time.sleep(5)
     else:
+        logPost(f'Error finding server time:<br> {result.text}')
         print(" "*150, end="\r", flush=True)
         print("Error finding Server Time", flush=True)
         print(result.reason)
         print(result.text)
+
+def bot(account=Status, config=Config):
+    headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "APCA-API-KEY-ID": config.apiKey,
+        "APCA-API-SECRET-KEY": config.apiSecret
+    }
+
+    if account.equity == 0:
+        print("Loading Alpaca Account data")
+        accountData = get_account(config)
+        account.equity = float(accountData["equity"])
+        print("Updating Tickers")
+        account.check_ticker(config)
+        print("Finding open limit orders")
+        ordersURL = f"{config.urlBase}markets/v2/orders" # Finding un-recorded open limit orders
+        result = session.get(ordersURL, headers=headers)
+        if result.status_code == 200:
+            jsonResult = result.json()
+            for item in jsonResult:
+                for key,ticker in enumerate(account.tickers):
+                    if item["symbol"] == ticker["ticker"]:
+                        if not ticker["limitTrade"]["open"]:
+                            account.tickers[key]['limitTrade']["open"] = True
+                            account.tickers[key]['limitTrade']["id"] = item["id"]
+                            account.tickers[key]['limitTrade']["ts"] = 0
+                        break
+
+    if account.market not in ["closed","holiday","suspended"]:
+        accountData = get_account(config)
+        total_pos = len(account.tickers)
+        account.equity = float(accountData["equity"])
+        baseBalance = account.equity/(total_pos+(total_pos*account.margin))
+
+        ticker_list = []
+        for ticker in account.tickers:
+            ticker_list.append(ticker["ticker"])
+        tickersStr = "%2C".join(ticker_list)
+        snapshotURL = "https://data.alpaca.markets/v2/stocks/snapshots?symbols={}&feed=iex".format(tickersStr)
+        result = session.get(snapshotURL, headers=headers)
+        if result.status_code == 200:
+            jsonResult = result.json()
+            for key,ticker in enumerate(account.tickers):
+                account.tickers[key]["price"] = float(jsonResult[ticker["ticker"]]["minuteBar"]["vw"])
+        else:
+            logPost(f"Error call new snapshot:<br>{result.text}")
+            print("Error calling new snapshot")
+            print(str(result.status_code))
+            print(result.reason)
+            print(result.text)
+        
+        marketTrend = 0
+        marketRSI = 0
+        for ticker in account.tickers:
+            marketTrend += ticker["trend"]
+            marketRSI += ticker["rsi"]
+        marketTrend = marketTrend/len(account.tickers)
+        marketRSI = marketRSI/len(account.tickers)
+        generalTrend = (marketTrend+(marketRSI/50))/2
+
+        for key, ticker in enumerate(account.tickers):
+            weight = 1+(5*((generalTrend-1)**2)*(abs(generalTrend-1)/(generalTrend-1)))
+            weight = max(0, min(1, weight)) #Adjustment capped at 100% during downwards trend
+            balance_value = baseBalance*weight if config.weightRefinement else baseBalance
+            
+
+            if ticker["limitTrade"]["open"]:    #Checking open limit orders
+                openURL = f"{config.urlBase}markets/v2/orders/{ticker['limitTrade']['id']}"
+                result = session.get(openURL, headers=headers)
+                if str(result.status_code) == "200":
+                    jsonResult = result.json()
+                    if jsonResult["status"] == "filled" or jsonResult["status"] == "canceled" or jsonResult["status"] == "expired":
+                        account.tickers[key]["limitTrade"]["open"] = False
+                        account.tickers[key]["limitTrade"]["id"] = ""
+                        account.tickers[key]["limitTrade"]["ts"] = account.serverTime
+                        newVolume = get_balances(config,ticker["ticker"])
+                        if newVolume and newVolume != ticker["volume"]:
+                            account.tickers[key]["volume"] = newVolume
+                    elif (account.serverTime - ticker["limitTrade"]["ts"]) > 300:    #Removing old limit orders
+                        deleteURL = "{}markets/v2/orders/{}".format(config.urlBase,ticker["limitTrade"]["id"])
+                        result = session.delete(deleteURL, headers=headers)
+                        print(" "*150, end="\r", flush=True)
+                        if str(result.status_code) == "204":
+                            print("Cancelled old limit order")
+                        else:
+                            print("Failed to cancel old limit order", flush=True)
+                            print(str(result.status_code))
+                            print(result.reason)
+                            print(result.text)
+                        account.tickers[key]["limitTrade"]["open"] = False
+                        account.tickers[key]["limitTrade"]["id"] = ""
+                        account.tickers[key]["limitTrade"]["ts"] = account.serverTime
+                else:
+                    print(" "*150, end="\r", flush=True)
+                    print("Failed to check open order: {}".format(ticker["limitTrade"]["id"]))
+                    print(result.reason)
+                    print(result.text)
+                    account.tickers[key]["limitTrade"]["open"] = False
+                    account.tickers[key]["limitTrade"]["id"] = ""
+                    account.tickers[key]["limitTrade"]["ts"] = account.serverTime
+                    newVolume = get_balances(config,ticker["ticker"])
+                    if newVolume and newVolume != ticker["volume"]:
+                        account.tickers[key]["volume"] = newVolume
+
+            if ticker["volume"] == 0 and not ticker["limitTrade"]["open"]:   #Buy initial shares
+                result = create_order(config,balance_value,"buy",ticker["ticker"],account.market,ticker["price"],"value")
+                print(" "*150, end="\r", flush=True)
+                print("Buyinf initial {} shares".format(ticker["ticker"]), flush=True)
+                if result == "success":
+                    print("Bought ${} of {}".format(balance_value,ticker["ticker"]), )
+                    newVolume = get_balances(config,ticker["ticker"])
+                    if newVolume and newVolume != ticker["volume"]:
+                        account.tickers[key]["volume"] = newVolume
+                elif result == "failed":
+                    print("Failed to buy ${} of {}".format(balance_value,ticker["ticker"]), )
+                else:
+                    print("Place limit order to buy ${} of {}".format(balance_value,ticker["ticker"]), )
+                    account.tickers[key]["limitTrade"]["open"] = True
+                    account.tickers[key]["limitTrade"]["id"] = result
+                    account.tickers[key]["limitTrade"]["ts"] = account.serverTime
+
+            if not ticker["limitTrade"]["open"]:    #Balance ticker if no limit trade open
+                if (ticker["volume"]*ticker["price"]) > balance_value:
+                    diff = ((ticker["volume"]*ticker["price"])-balance_value)/balance_value
+                    if diff < margin:
+                        account.tickers[key]["difference"] = diff
+                    elif diff > ticker["difference"]:
+                        account.tickers[key]["difference"] = diff
+                    elif diff < (ticker["difference"]*(1-((ticker["difference"]+margin)/2))) and diff > margin:
+                        sell_value = (ticker["volume"]*ticker["price"])-balance_value
+                        result = create_order(config,sell_value,"sell",ticker["ticker"],account.market,ticker["price"],"value")
+                        print(" "*150, end="\r", flush=True)
+                        if result == "success":
+                            print("Sold ${} of {}".format(str(sell_value),ticker["ticker"]), flush=True)
+                            newVolume = get_balances(config,ticker["ticker"])
+                            if newVolume:
+                                account.tickers[key]["volume"] = newVolume
+                        elif result == "failed":
+                            print("Failed to sell ${} of {}".format(str(sell_value),ticker["ticker"]))
+                        else:
+                            print("Place limit order to sell ${} of {}".format(str(sell_value),ticker["ticker"]))
+                            account.tickers[key]["limitTrade"]["open"] = True
+                            account.tickers[key]["limitTrade"]["id"] = result
+                            account.tickers[key]["limitTrade"]["ts"] = account.serverTime
+
+
+                elif (ticker["volume"]*ticker["price"]) < balance_value:
+                    diff = (balance_value-(ticker["volume"]*ticker["price"]))/balance_value
+                    if diff < margin:
+                        account.tickers[key]["difference"] = diff
+                    elif diff > ticker["difference"]:
+                        account.tickers[key]["difference"] = diff
+                    elif diff < (ticker["difference"]*(1-((ticker["difference"]+margin)/2))) and diff > margin:
+                        buy_value = (balance_value-(ticker["volume"]*ticker["price"]))
+                        result = create_order(config,buy_value,"buy",ticker["ticker"],account.market,ticker["price"],"value")
+                        print(" "*150, end="\r", flush=True)
+                        if result == "success":
+                            print("Bought ${} of {}".format(str(buy_value),ticker["ticker"]), flush=True)
+                            newVolume = get_balances(config,ticker["ticker"])
+                            if newVolume:
+                                account.tickers[key]["volume"] = newVolume
+                        elif result == "failed":
+                            print("Failed to buy ${} of {}".format(str(buy_value),ticker["ticker"]))
+                        else:
+                            print("Place limit order to buy ${} of {}".format(str(buy_value),ticker["ticker"]))
+                            account.tickers[key]["limitTrade"]["open"] = True
+                            account.tickers[key]["limitTrade"]["id"] = result
+                            account.tickers[key]["limitTrade"]["ts"] = account.serverTime
+
+                else:
+                    account.tickers[key]["difference"] = 0
+
+        highTicker = {
+            "ticker":"",
+            "diff":0
+        }
+        for ticker in account.tickers:
+            if ticker["difference"] > highTicker["diff"]:
+                highTicker["diff"] = ticker["difference"]
+                highTicker["ticker"] = ticker["ticker"]
+
+        print(" "*150, end="\r", flush=True)
+        print(f"{dt_object.hour}:{dt_object.minute}:{dt_object.second} ~ '{account.market.upper()}' trade, Equity: ${account.equity}; Highest Swing {highTicker["ticker"]}:{trunc(highTicker["diff"]*100,1)}% Balance Value: ${trunc(baseBalance,2)}", end="\r", flush=True)
+    elif account.market == "suspended":
+        pass
+    else:
+        print(" "*150, end="\r", flush=True)
+        print(f"{dt_object.hour}:{dt_object.minute}:{dt_object.second} ~ '{account.market.upper()}' trade, Equity: ${account.equity}; Highest Swing {highTicker["ticker"]}:{trunc(highTicker["diff"]*100,1)}% Balance Value: ${trunc(baseBalance,2)}", end="\r", flush=True)
+
+
     
-
-
+@bmd_logger
+def bot_loop(account=Status, config=Config, server="closed"):
+    config.update()
+    account.margin = config.margin
+    checkTime(account, config, server)
+    if server != 'closed':
+        bot(account,config)
+    account.save_state()
+    ts=int(time.time())
+    checkIn(int(time.time()),account,config)
 
 
                     
@@ -715,17 +838,14 @@ if __name__=="__main__":
     except Exception as e:
         account.save_state()
     config = Config()
-    checkInTS = 0
+    server = "closed" #Tracking Exchange open and closed
+    schedule.every(1).minute.do(bot_loop, account=account, config=config, server=server)
+    schedule.every(5).minute.do(checkBalances, account=account, config=config) #Confirm Balance Amounts
+    schedule.every().day.at("22:00").do(day_end, account=account, config=config)
     while True:
         try:
-            config.update()
-            account.margin = config.margin
-            bot(account,config)
-            account.save_state()
-            ts = int(time.time())
-            if ts - checkInTS > 60:
-                checkIn(ts, account)
-                checkInTS = ts
+            schedule.run_pending()
+            time.sleep(5)
         except Exception as e:
             account.load_state()
             raise
