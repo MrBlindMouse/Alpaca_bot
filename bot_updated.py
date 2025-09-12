@@ -310,20 +310,28 @@ def check_in(ts, account=Status, config=Config):
     }
     requests.post(url=url, json=payload)
     url = 'https://www.bmd-studios.com/general'
-    high_ticker = {"ticker": "", "diff": 0}
-    second_ticker = {"ticker": "", "diff": 0}
+    high_ticker = {"ticker": "", "diff": 0, "val":0}
+    low_ticker = {"ticker": "", "diff": 0, "val":0}
+    general_swing = 0
     for ticker in account.tickers:
-        if ticker["difference"] > high_ticker["diff"]:
-            second_ticker["diff"] = high_ticker["diff"]
-            second_ticker["ticker"] = high_ticker["ticker"]
-            high_ticker["diff"] = ticker["difference"]
+        general_swing += ticker["difference"]
+        if high_ticker["val"] == 0 or (ticker["volume"]*ticker["price"]) > high_ticker["val"]:
             high_ticker["ticker"] = ticker["ticker"]
-        elif ticker["difference"] > second_ticker["diff"]:
-            second_ticker["diff"] = ticker["difference"]
-            second_ticker["ticker"] = ticker["ticker"]
+            high_ticker["diff"] = ticker["difference"]
+            high_ticker["val"] = ticker["volume"]*ticker["price"]
+            
+        if low_ticker["val"] == 0 or (ticker["volume"]*ticker["price"]) < high_ticker["val"]:
+            low_ticker["ticker"] = ticker["ticker"]
+            low_ticker["diff"] = ticker["difference"]
+            low_ticker["val"] = ticker["volume"]*ticker["price"]
+
+
+    general_swing = general_swing/len(account.tickers)
+    balance_value = account.equity / (len(account.tickers)*(1+account.margin))
     display_str = f"""
-    <p>Highest Swing: {high_ticker["ticker"]}:{trunc(high_ticker["diff"]*100, 1)}%</p>
-    <p>Second Swing: {second_ticker["ticker"]}:{trunc(second_ticker["diff"]*100, 1)}%</p>
+    <p>&ensp;Highest Swing: {high_ticker["ticker"]}: {trunc(high_ticker["diff"]*100, 1)}% at ${trunc(high_ticker["val"],2)}</p>
+    <p>&ensp;Lowest Swing: {low_ticker["ticker"]}: {trunc(low_ticker["diff"]*100, 1)}% at ${trunc(low_ticker["val"],2)}</p>
+    <p>&ensp;Avg Swing size: {trunc(general_swing*100, 1)} for {len(accout.tickers)} tickers balancing to ${trunc(balance_value,2)}.</p>
     """
     payload = {
         "id": "02",
