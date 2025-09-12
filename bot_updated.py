@@ -10,6 +10,15 @@ from bs4 import BeautifulSoup
 from dotenv import dotenv_values
 import traceback, sys, os
 import schedule
+#import logging
+
+#def exception_handler(exc_type, exc_value, exc_traceback):
+#    if issubclass(exc_type, KeyboardInterrupt):
+#        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+#        return
+#    logger.critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
+
+sys.excepthook = handle_uncaught_exception
 
 class Status:
     STATE_FILE = "trading_state.json"
@@ -328,10 +337,14 @@ def check_in(ts, account=Status, config=Config):
 
     general_swing = general_swing/len(account.tickers)
     balance_value = account.equity / (len(account.tickers)*(1+account.margin))
+    time = datetime.datetime.now()
     display_str = f"""
-    <p>&ensp;Highest Swing: {high_ticker["ticker"]}: {trunc(high_ticker["diff"]*100, 1)}% at ${trunc(high_ticker["val"],2)}</p>
-    <p>&ensp;Lowest Swing: {low_ticker["ticker"]}: {trunc(low_ticker["diff"]*100, 1)}% at ${trunc(low_ticker["val"],2)}</p>
-    <p>&ensp;Avg Swing size: {trunc(general_swing*100, 1)} for {len(accout.tickers)} tickers balancing to ${trunc(balance_value,2)}.</p>
+    <div style="padding:5px;">
+    <p>{time}</p>
+    <p>Highest Swing: {high_ticker["ticker"]}: {trunc(high_ticker["diff"]*100, 1)}% at ${trunc(high_ticker["val"],2)}</p>
+    <p>Lowest Swing: {low_ticker["ticker"]}: {trunc(low_ticker["diff"]*100, 1)}% at ${trunc(low_ticker["val"],2)}</p>
+    <p>Avg Swing size: {trunc(general_swing*100, 1)}% for {len(account.tickers)} tickers balancing to ${trunc(balance_value,2)}.</p>
+    </div>
     """
     payload = {
         "id": "02",
