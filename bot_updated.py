@@ -319,7 +319,7 @@ def check_in(ts, account=Status, config=Config):
             high_ticker["ticker"] = ticker["ticker"]
             high_ticker["diff"] = ticker["difference"]
             high_ticker["val"] = ticker["volume"]*ticker["price"]
-            
+
         if low_ticker["val"] == 0 or (ticker["volume"]*ticker["price"]) < high_ticker["val"]:
             low_ticker["ticker"] = ticker["ticker"]
             low_ticker["diff"] = ticker["difference"]
@@ -331,7 +331,7 @@ def check_in(ts, account=Status, config=Config):
     display_str = f"""
     <p>&ensp;Highest Swing: {high_ticker["ticker"]}: {trunc(high_ticker["diff"]*100, 1)}% at ${trunc(high_ticker["val"],2)}</p>
     <p>&ensp;Lowest Swing: {low_ticker["ticker"]}: {trunc(low_ticker["diff"]*100, 1)}% at ${trunc(low_ticker["val"],2)}</p>
-    <p>&ensp;Avg Swing size: {trunc(general_swing*100, 1)} for {len(accout.tickers)} tickers balancing to ${trunc(balance_value,2)}.</p>
+    <p>&ensp;Avg Swing size: {trunc(general_swing*100, 1)} for {len(account.tickers)} tickers balancing to ${trunc(balance_value,2)}.</p>
     """
     payload = {
         "id": "02",
