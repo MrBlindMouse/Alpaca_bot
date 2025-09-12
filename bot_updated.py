@@ -18,7 +18,7 @@ import schedule
 #        return
 #    logger.critical("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
 
-sys.excepthook = handle_uncaught_exception
+#sys.excepthook = handle_uncaught_exception
 
 class Status:
     STATE_FILE = "trading_state.json"
