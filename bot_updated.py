@@ -329,7 +329,7 @@ def check_in(ts, account=Status, config=Config):
             high_ticker["diff"] = ticker["difference"]
             high_ticker["val"] = ticker["volume"]*ticker["price"]
 
-        if low_ticker["val"] == 0 or (ticker["volume"]*ticker["price"]) < high_ticker["val"]:
+        if low_ticker["val"] == 0 or (ticker["volume"]*ticker["price"]) < low_ticker["val"]:
             low_ticker["ticker"] = ticker["ticker"]
             low_ticker["diff"] = ticker["difference"]
             low_ticker["val"] = ticker["volume"]*ticker["price"]
