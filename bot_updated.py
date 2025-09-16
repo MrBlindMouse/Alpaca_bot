@@ -456,7 +456,7 @@ def bot(account=Status, config=Config):
         account_data = get_account(config)
         total_pos = len(account.tickers)
         account.equity = float(account_data["equity"])
-        base_balance = account.equity / (total_pos + (total_pos * account.margin))
+        base_balance = account.equity / (total_pos + ((total_pos * account.margin)/2))
         ticker_list = [ticker["ticker"] for ticker in account.tickers]
         tickers_str = "%2C".join(ticker_list)
         snapshot_url = f"https://data.alpaca.markets/v2/stocks/snapshots?symbols={tickers_str}&feed=iex"
