@@ -1,7 +1,9 @@
 # Alpaca_bot
-Personal saving and investment bot
-Balancing high dividend yeild stocks and etf's on the alpaca api
+Personal saving and investment bot balancing high-dividend stocks and ETFs on the Alpaca API.
 
+**Run:** `python bot.py`
+
+## Setup
 .env file required. Format following:
 '''
 PAPERKEY='Paper api key'
