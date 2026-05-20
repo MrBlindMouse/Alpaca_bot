@@ -1,0 +1,115 @@
+import logging
+import os
+from logging.handlers import RotatingFileHandler
+from typing import Optional
+
+from dotenv import dotenv_values
+
+REQUIRED_KEYS = ("VERSION", "MARGIN")
+PAPER_KEYS = ("PAPER_KEY", "PAPER_SECRET")
+LIVE_KEYS = ("API_KEY", "API_SECRET")
+
+
+def _parse_bool(value: Optional[str], default: bool = False) -> bool:
+    if value is None or value == "":
+        return default
+    return value.strip().lower() in ("1", "true", "yes", "on")
+
+
+class Config:
+    def __init__(self):
+        self.remote_logging_enabled = False
+        self.remote_base_url = "https://www.bmd-studios.com"
+        self.log_level = "INFO"
+        self.log_file = ""
+        self.title = ""
+        self.urlBase = ""
+        self.apiKey = ""
+        self.apiSecret = ""
+        self.margin = 0.0
+        self.paper = True
+        self._remote_disabled_logged = False
+
+    def update(self):
+        raw = dotenv_values(".env")
+        self._validate(raw)
+
+        version = raw["VERSION"]
+        self.paper = version == "PAPER"
+        self.title = "Alpaca Test" if self.paper else "Alpaca"
+        self.urlBase = (
+            "https://paper-api.alpaca."
+            if self.paper
+            else "https://api.alpaca."
+        )
+        self.apiKey = raw["PAPER_KEY"] if self.paper else raw["API_KEY"]
+        self.apiSecret = raw["PAPER_SECRET"] if self.paper else raw["API_SECRET"]
+        self.margin = float(raw["MARGIN"])
+
+        self.remote_logging_enabled = _parse_bool(
+            raw.get("REMOTE_LOGGING_ENABLED"), default=False
+        )
+        base = (raw.get("REMOTE_BASE_URL") or "https://www.bmd-studios.com").rstrip("/")
+        self.remote_base_url = base
+        self.log_level = (raw.get("LOG_LEVEL") or "INFO").upper()
+        self.log_file = (raw.get("LOG_FILE") or "").strip()
+
+    @staticmethod
+    def _validate(raw: dict):
+        missing = [k for k in REQUIRED_KEYS if not raw.get(k)]
+        if missing:
+            raise ValueError(f"Missing required .env keys: {', '.join(missing)}")
+
+        if raw.get("VERSION") == "PAPER":
+            missing = [k for k in PAPER_KEYS if not raw.get(k)]
+        else:
+            missing = [k for k in LIVE_KEYS if not raw.get(k)]
+        if missing:
+            raise ValueError(f"Missing required .env keys: {', '.join(missing)}")
+
+        try:
+            float(raw["MARGIN"])
+        except (TypeError, ValueError) as exc:
+            raise ValueError("MARGIN must be a number") from exc
+
+
+def setup_logging(
+    config: Config,
+    *,
+    console: bool = True,
+    default_log_file: Optional[str] = None,
+) -> logging.Logger:
+    if not config.log_file and default_log_file:
+        config.log_file = default_log_file
+
+    from log_viewer import resolve_log_level
+
+    level = resolve_log_level(config.log_level)
+    root = logging.getLogger("alpaca_bot")
+    root.handlers.clear()
+    root.setLevel(level)
+
+    formatter = logging.Formatter(
+        "%(asctime)s %(levelname)s %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+    if console:
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(formatter)
+        root.addHandler(stream_handler)
+
+    if config.log_file:
+        file_handler = RotatingFileHandler(
+            config.log_file, maxBytes=5_000_000, backupCount=3
+        )
+        file_handler.setFormatter(formatter)
+        root.addHandler(file_handler)
+
+    return root
+
+
+def log_remote_disabled_once(config: Config, logger: logging.Logger):
+    if config.remote_logging_enabled or config._remote_disabled_logged:
+        return
+    config._remote_disabled_logged = True
+    logger.debug("Remote logging disabled (REMOTE_LOGGING_ENABLED=false)")

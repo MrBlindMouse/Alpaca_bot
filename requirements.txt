@@ -3,3 +3,4 @@ requests
 beautifulsoup4
 requests-ratelimiter
 schedule
+textual>=0.47.0

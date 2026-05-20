@@ -1,0 +1,218 @@
+Screen {
+    background: #0d1117;
+}
+
+Header {
+    background: #161b22;
+    color: #58a6ff;
+}
+
+Footer {
+    background: #161b22;
+    color: #8b949e;
+}
+
+#status_bar {
+    height: 3;
+    background: #161b22;
+    padding: 0 1;
+    border-bottom: solid #30363d;
+}
+
+
+.mode_paper {
+    color: #3fb950;
+    text-style: bold;
+}
+
+.mode_live {
+    color: #d29922;
+    text-style: bold;
+}
+
+.status_running {
+    color: #3fb950;
+}
+
+.status_stopped {
+    color: #8b949e;
+}
+
+#dashboard_metrics {
+    height: auto;
+    min-height: 3;
+    padding: 1;
+    margin-bottom: 1;
+    background: #161b22;
+    border: solid #30363d;
+}
+
+#dashboard_meta {
+    height: 1;
+    color: #8b949e;
+    margin-bottom: 1;
+}
+
+DataTable {
+    height: 1fr;
+    background: #0d1117;
+}
+
+DataTable > .datatable--cursor {
+    background: #1f6feb33;
+}
+
+#analytics_summary {
+    height: auto;
+    max-height: 8;
+    padding: 1;
+    background: #161b22;
+    border: solid #30363d;
+    margin-bottom: 1;
+}
+
+#analytics_toolbar {
+    height: 3;
+    margin-bottom: 1;
+}
+
+#analytics_toolbar Select {
+    width: 1fr;
+    margin-right: 1;
+}
+
+#activity_bars {
+    height: auto;
+    min-height: 14;
+    padding: 1;
+    border-top: solid #30363d;
+    background: #0d1117;
+}
+
+.positive {
+    color: #3fb950;
+}
+
+.negative {
+    color: #f85149;
+}
+
+TabbedContent {
+    height: 1fr;
+}
+
+TabPane {
+    padding: 1;
+}
+
+#settings_panel {
+    padding: 1 2;
+}
+
+#margin_input {
+    margin: 1 0;
+    width: 20;
+}
+
+Button.primary {
+    background: #238636;
+    color: white;
+}
+
+Button.danger {
+    background: #da3633;
+    color: white;
+}
+
+#log_strip {
+    height: 7;
+    border: solid #30363d;
+    background: #0d1117;
+    padding: 0 1;
+}
+
+#log_strip:focus {
+    outline: none;
+}
+
+#logs_controls {
+    height: 5;
+    margin-bottom: 1;
+}
+
+.log_control_group {
+    width: 1fr;
+    height: auto;
+    padding: 0 1 0 0;
+}
+
+.log_control_group Label {
+    height: 1;
+    color: #8b949e;
+}
+
+#log_file_label {
+    height: 1;
+    color: #8b949e;
+    margin-bottom: 1;
+}
+
+#log_viewer {
+    height: 1fr;
+    border: solid #30363d;
+    background: #0d1117;
+    padding: 0 1;
+}
+
+#dashboard_actions {
+    height: 3;
+    margin-top: 1;
+}
+
+QuitModal {
+    align: center middle;
+}
+
+#quit_dialog {
+    width: 62;
+    height: auto;
+    padding: 1 2 2 2;
+    background: #161b22;
+    border: solid #58a6ff;
+}
+
+#quit_title {
+    width: 100%;
+    height: auto;
+    min-height: 1;
+    margin-bottom: 1;
+    text-style: bold;
+    color: #e6edf3;
+}
+
+#quit_context {
+    width: 100%;
+    height: auto;
+    min-height: 1;
+    margin-bottom: 1;
+    color: #8b949e;
+}
+
+#quit_message {
+    width: 100%;
+    height: auto;
+    min-height: 2;
+    margin-bottom: 1;
+    color: #8b949e;
+}
+
+#quit_actions {
+    width: 100%;
+    height: 3;
+    align: center middle;
+}
+
+#quit_actions Button {
+    margin: 0 1;
+    min-width: 16;
+}

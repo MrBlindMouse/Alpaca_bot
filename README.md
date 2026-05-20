@@ -9,12 +9,13 @@ Personal saving and investment bot that rebalances a portfolio of NASDAQ-100–d
 - **Paper and live:** Switch via `VERSION` in `.env`; uses Alpaca paper or live API and keys accordingly.
 - **Extended hours:** Supports pre/post market; places limit orders when the main session is closed.
 - **State:** Persists tickers, equity, market state, and open limit orders in `trading_state.json`.
-- **Optional remote logging/recording:** Can post logs and daily records to external endpoints (bmd-studios.com); bot continues if those calls fail.
+- **Trade log:** Every order and liquidation is appended to `trades.jsonl` for offline analysis.
+- **Optional remote logging/recording:** When `REMOTE_LOGGING_ENABLED=true`, posts logs, heartbeats, and daily records to bmd-studios.com (or `REMOTE_BASE_URL`). Default is off; failures never stop the bot.
 
 ## Requirements
 
 - Python 3.9+
-- Dependencies in `requirements.txt`: python-dotenv, requests, beautifulsoup4, requests-ratelimiter, schedule
+- Dependencies in `requirements.txt`: python-dotenv, requests, beautifulsoup4, requests-ratelimiter, schedule, textual
 
 ## Setup
 
@@ -25,95 +26,163 @@ Personal saving and investment bot that rebalances a portfolio of NASDAQ-100–d
    pip install -r requirements.txt
    ```
 
-2. **Environment variables:** Create a `.env` file in the project root. **Do not commit `.env`** (it is in `.gitignore`). Use the exact variable names the code expects:
+2. **Environment variables:** Copy [`.env.example`](.env.example) to `.env` and fill in values. **Do not commit `.env`.**
 
-   | Variable       | Description |
-   |----------------|-------------|
-   | `VERSION`      | `PAPER` for paper trading, any other value (e.g. `real`) for live. |
-   | `PAPER_KEY`    | Alpaca paper API key (used when `VERSION=PAPER`). |
-   | `PAPER_SECRET` | Alpaca paper API secret (used when `VERSION=PAPER`). |
-   | `API_KEY`      | Alpaca live API key (used when not paper). |
-   | `API_SECRET`   | Alpaca live API secret (used when not paper). |
-   | `MARGIN`       | Rebalance margin (float). Recommended range 0.02–0.15. |
+   | Variable | Description |
+   |----------|-------------|
+   | `VERSION` | `PAPER` for paper trading, any other value (e.g. `real`) for live. |
+   | `PAPER_KEY` / `PAPER_SECRET` | Alpaca paper credentials (when `VERSION=PAPER`). |
+   | `API_KEY` / `API_SECRET` | Alpaca live credentials (when not paper). |
+   | `MARGIN` | Rebalance margin (float). Recommended range 0.02–0.15. |
+   | `REMOTE_LOGGING_ENABLED` | `true` to enable remote posts; default `false`. |
+   | `REMOTE_BASE_URL` | Base URL for remote endpoints (default `https://www.bmd-studios.com`). |
+   | `LOG_LEVEL` | Standard logging level (default `INFO`). |
+   | `LOG_FILE` | Optional path for rotating log file (leave empty for console only). |
 
-   Example (no real values):
-   ```
-   VERSION=PAPER
-   PAPER_KEY=your_paper_key
-   PAPER_SECRET=your_paper_secret
-   API_KEY=your_live_key
-   API_SECRET=your_live_secret
-   MARGIN=0.05
-   ```
-   Consider adding a `.env.example` with these keys and placeholder values for contributors.
-
-3. **Optional:** The bot posts logs and daily records to bmd-studios.com. If those endpoints are down or you don’t use them, the bot still runs; failed posts are printed and execution continues.
+3. **First run:** If `trading_state.json` is missing, the TUI creates it automatically when you open `python -m tui`. Headless mode creates it on startup, or run `python bot.py --init` to create the file only.
 
 ## Run
+
+**Headless bot** (scheduler in foreground):
 
 ```bash
 python bot.py
 ```
 
-Scheduled jobs: every 1 minute (main bot loop), every 1 hour (balance check), and daily at 22:00 (day-end recording).
+**Terminal UI** (start/stop bot, margin, live status, analytics):
+
+```bash
+python -m tui
+```
+
+Bot logs go to `alpaca_bot.log` when using the TUI (console logging is disabled so the UI stays readable). Set `LOG_FILE` in `.env` to customize.
+
+Scheduled jobs: every 1 minute (main bot loop), every 1 hour (balance check), and daily at 22:00 (day-end recording when remote logging is enabled).
+
+| Key | Action |
+|-----|--------|
+| `t` | Toggle start/stop bot |
+| `r` | Refresh state, trades, and Alpaca data (Logs tab reloads from file) |
+| `q` | Quit (prompts if bot is running) |
+| `1` | Dashboard |
+| `2` | Positions |
+| `3` | Trades |
+| `4` | Analytics |
+| `5` | Logs |
+| `6` | Settings |
+
+Use the **tab bar** or footer keys `1`–`6` to switch views. The status bar also shows the active view name.
+
+**Status bar:** **Bot tick** is the last scheduler rebalance (~1 min while running). **UI updated** (on the Dashboard) is when the TUI last read local state/logs (~every 2 s).
+
+On the **Logs** tab, new lines are appended without clearing the viewer (scroll position is preserved). Press `r` to reload the full log window.
+
+**Tables:** Click a column header to sort. Numeric columns sort by value, not as text. **Trades** rows use a muted green (buy) or blue-gray (sell) tint. **Analytics** rows use a muted green/red tint by liquidation P/L sign.
+
+![TUI screenshot](docs/tui-screenshot.png)
+
+### Logging
+
+**Headless** (`python bot.py`):
+
+| Flag | Effect |
+|------|--------|
+| `-v` / `--verbose` | DEBUG |
+| `-q` / `--quiet` | WARNING and above |
+| `--log-level debug` | Explicit level (debug, info, warning, error, critical) |
+| `--log-file PATH` | Also write to a rotating log file |
+
+`.env` `LOG_LEVEL` applies when no CLI flag is set. Example: `python bot.py -v --log-file alpaca_bot.log`
+
+**TUI** (`python -m tui`): logs go to `alpaca_bot.log` (or `LOG_FILE`). Open the **Logs** tab to filter by level and change what the bot writes. Same CLI flags: `python -m tui -v`.
+
+Dashboard shows the last few WARNING+ lines; the Logs tab shows up to 400 lines with color by level.
 
 ## Project layout
 
-| Path                | Description |
-|---------------------|-------------|
-| `bot.py`            | Main entrypoint: config, state, Alpaca client, ticker scraping, rebalance logic, and scheduler. |
-| `indicators.py`     | Helper functions `beta()` and `trend()` (RSI/SMA); not currently used by `bot.py`. |
-| `requirements.txt`  | Python dependencies. |
-| `.env`              | Local env vars (create from names above; do not commit). |
-| `trading_state.json`| Generated at runtime; persisted state and open orders. |
+| Path | Description |
+|------|-------------|
+| `bot.py` | Headless CLI entry point |
+| `runner.py` | `BotRunner` start/stop scheduler (CLI + TUI) |
+| `tui/` | Textual terminal UI (`python -m tui`) |
+| `analytics.py` | Trade/portfolio aggregates for TUI |
+| `env_config.py` | Read/write `MARGIN` in `.env` |
+| `config.py` | Environment loading and validation |
+| `state.py` | `trading_state.json` load/save |
+| `alpaca_client.py` | Alpaca HTTP session and account/positions |
+| `ticker_source.py` | NASDAQ-100 ticker discovery |
+| `market.py` | Market clock and session state |
+| `rebalance.py` | Rebalance loop |
+| `orders.py` | Order placement and `OrderResult` |
+| `trade_log.py` | Append-only `trades.jsonl` |
+| `remote.py` | Optional remote HTTP client |
+| `reporting.py` | Daily record and check-in |
+| `scheduler.py` | `bot_loop` and decorators |
+| `requirements.txt` | Runtime dependencies |
+| `requirements-dev.txt` | pytest (development) |
+| `.env` | Local secrets (not committed) |
+| `trading_state.json` | Runtime operational state |
+| `trades.jsonl` | Runtime trade history (not committed) |
 
----
+See [AGENTS.md](AGENTS.md) for a concise map for contributors and coding agents.
 
-## Problems and improvements
+## Trade analysis
 
-Use this list to bring the app up to professional standards incrementally.
+All trades are written to `trades.jsonl` (one JSON object per line). Example queries:
 
-### Architecture and structure
+```bash
+# Pretty-print all trades
+cat trades.jsonl | jq .
 
-- [ ] **Modularize:** Split the 606-line monolith into modules (e.g. `config`, `state`, `alpaca_client`, `ticker_source`, `rebalance`, `scheduler`, thin `main`/`bot_loop`).
-- [ ] **Remove globals:** Pass `session`, `config`, and `server` explicitly (or via a small context) instead of using globals in `bmd_logger`, `find_tickers`, etc.
-- [ ] **Validate config:** Add validated config (e.g. dataclass or Pydantic) with clear errors for missing/invalid `.env` keys; consider `.env.example`.
-- [ ] **Dead code:** Either use `indicators.py` from `bot.py` or remove it; remove unused `math` import from `bot.py`.
-- [ ] **Deprecated import:** Replace `from requests.packages.urllib3.util.retry import Retry` with `from urllib3.util.retry import Retry`.
+# Filled buys only
+jq 'select(.status == "filled" and .side == "buy")' trades.jsonl
 
-### Error handling and resilience
+# Count by symbol
+jq -r .symbol trades.jsonl | sort | uniq -c
+```
 
-- [ ] **Stop swallowing exceptions:** In `@bmd_logger`, log then re-raise (or set a failure state and exit) so the process can be supervised; avoid silent continuation after critical failures.
-- [ ] **Missing state file:** In `__main__`, handle `FileNotFoundError` from `load_state()` explicitly; bootstrap new state or exit with instructions instead of overwriting with empty state.
-- [ ] **API/network failures:** Add structured retries, backoff, and clear handling for `get_balances`, `create_order`, `find_tickers` instead of only printing and continuing.
-- [ ] **Return conventions:** Use consistent return types (e.g. Result types or exceptions) and type hints; replace string returns like `"success"` / `"failed"` with explicit types.
+In Python:
 
-### Logging and observability
+```python
+import json
+trades = [json.loads(line) for line in open("trades.jsonl")]
+```
 
-- [ ] **Use standard logging:** Replace `print` with `logging` (INFO for status, WARNING/ERROR for failures); add optional file/rotation.
-- [ ] **Remote logging:** Make remote logging (bmd-studios.com) optional and configurable via env.
-- [ ] **Sensitive data:** Ensure API keys and secrets are never logged; avoid logging full request/response bodies.
+## Analytics tab (TUI)
 
-### Self-documentation and maintainability
+The **Analytics** tab combines `trades.jsonl` (filtered by period) with `trading_state.json` and optional Alpaca refresh.
 
-- [ ] **Docstrings:** Add docstrings to all public functions and classes (e.g. `create_order`, `get_account`, `check_time`, `bot`); include args, returns, and raised exceptions where non-obvious.
-- [ ] **Type hints:** Add type hints for public and key internal functions (config, account, order results).
-- [ ] **Magic numbers:** Extract and name constants (e.g. limit-order cancel after 300s, limit price offsets 1.005/0.995, sleep 61200s for holiday); document intent.
+| Column | Meaning |
+|--------|---------|
+| **Liq. P/L** | `(sell $ + held × current price) − buy $` for **filled** trades in the selected period, plus marking open shares at current price (state or Alpaca). `—` when there were no buys in that period. |
+| **Unreal. P/L** | Alpaca `market_value − cost_basis` after **Refresh from Alpaca**. |
+| **Swing %** | How far the position is from the bot’s equal-weight target (rebalance band), not daily stock return. |
 
-### Testing and CI
+Use period **All** for a full P/L picture; **Today** / **7d** only count buys and sells logged in that window (holdings can show `—` for Liq. P/L if nothing was bought recently).
 
-- [ ] **Unit tests:** Add tests for rebalance math, state load/save, and config parsing.
-- [ ] **Integration tests:** Add tests against Alpaca paper API (mocked or sandbox) where appropriate.
-- [ ] **CI:** Run the test suite in CI on commit or PR.
+Click a **column header** to sort (click again to reverse).
 
-### Security and operations
+## Testing
 
-- [ ] **Secrets:** Keep `.env` out of version control; document `.env.example` with placeholder keys only.
-- [ ] **External endpoints:** Document dependency on bmd-studios.com and slickcharts.com; add timeouts/retries and graceful degradation when unreachable.
-- [ ] **Rate limits:** Document Alpaca API rate limits; note that `LimiterSession` applies to Alpaca; scraping (SlickCharts) is separate.
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
 
-### Other
+CI runs pytest on Python 3.9, 3.11, and 3.12 (see `.github/workflows/test.yml`).
 
-- [ ] **Schedule robustness:** Single-threaded `schedule` can be delayed by long-running `bot()` or blocking I/O; consider non-blocking or worker design if scaling.
-- [ ] **Python version:** Pin in README (e.g. 3.9+) and optionally in `requires-python` (e.g. in `pyproject.toml` or setup metadata).
-- [ ] **AGENTS.md:** Project rules reference AGENTS.md; add a high-level AGENTS.md so the repo matches project conventions.
+## External dependencies
+
+- **Alpaca** — trading, clock, calendar, positions, market data
+- **SlickCharts** — NASDAQ-100 constituent list (scraped)
+- **bmd-studios.com** — optional remote logging/recording (off by default)
+
+Alpaca API calls use `LimiterSession` (200/min). Scraping is separate and not rate-limited by that session.
+
+## Remaining improvements
+
+The bot is modular with tests and optional remote logging. Possible follow-ups:
+
+- Integration tests against Alpaca paper API (mocked HTTP)
+- Richer rebalance unit tests (margin band math)
+- Non-blocking scheduler if loop latency becomes an issue

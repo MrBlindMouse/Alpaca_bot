@@ -4,3 +4,5 @@ __pycache__
 test.py
 test2.py
 trading_state.json
+trades.jsonl
+*.log
