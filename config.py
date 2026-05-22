@@ -28,6 +28,11 @@ class Config:
         self.apiSecret = ""
         self.margin = 0.0
         self.paper = True
+        self.dry_run = False
+        self.slippage_guard_enabled = False
+        self.max_slippage_pct = 0.02
+        self.circuit_failure_threshold = 5
+        self.circuit_backoff_seconds = 300
         self._remote_disabled_logged = False
 
     def update(self):
@@ -53,6 +58,28 @@ class Config:
         self.remote_base_url = base
         self.log_level = (raw.get("LOG_LEVEL") or "INFO").upper()
         self.log_file = (raw.get("LOG_FILE") or "").strip()
+
+        self.slippage_guard_enabled = _parse_bool(
+            raw.get("SLIPPAGE_GUARD_ENABLED"), default=False
+        )
+        try:
+            self.max_slippage_pct = float(raw.get("MAX_SLIPPAGE_PCT") or "0.02")
+        except (TypeError, ValueError) as exc:
+            raise ValueError("MAX_SLIPPAGE_PCT must be a number") from exc
+
+        try:
+            self.circuit_failure_threshold = int(
+                raw.get("CIRCUIT_FAILURE_THRESHOLD") or "5"
+            )
+        except (TypeError, ValueError) as exc:
+            raise ValueError("CIRCUIT_FAILURE_THRESHOLD must be an integer") from exc
+
+        try:
+            self.circuit_backoff_seconds = int(
+                raw.get("CIRCUIT_BACKOFF_SECONDS") or "300"
+            )
+        except (TypeError, ValueError) as exc:
+            raise ValueError("CIRCUIT_BACKOFF_SECONDS must be an integer") from exc
 
     @staticmethod
     def _validate(raw: dict):

@@ -3,6 +3,7 @@ import time
 from dataclasses import dataclass
 from typing import Literal, Optional
 
+from alpaca_client import get_snapshot_vwap
 from trade_log import append_trade, build_trade_record
 from utils import trunc
 
@@ -89,6 +90,20 @@ def log_limit_status(
     )
 
 
+def _check_slippage(session, config, symbol: str, current_price: float) -> Optional[str]:
+    """Return error message if price moved beyond max slippage, else None."""
+    latest = get_snapshot_vwap(session, config, symbol)
+    if latest is None or current_price <= 0:
+        return None
+    move = abs(latest - current_price) / current_price
+    if move > config.max_slippage_pct:
+        return (
+            f"slippage {move:.4f} exceeds max {config.max_slippage_pct:g} "
+            f"(ref={current_price}, latest={latest})"
+        )
+    return None
+
+
 def create_order(
     session,
     config,
@@ -100,16 +115,51 @@ def create_order(
     market_status: str = "open",
     current_price: float = 0,
     order_value_type: str = "value",
+    circuit=None,
 ) -> OrderResult:
-    headers = {
-        "accept": "application/json",
-        "content-type": "application/json",
-        "APCA-API-KEY-ID": config.apiKey,
-        "APCA-API-SECRET-KEY": config.apiSecret,
-    }
+    from alpaca_client import alpaca_headers
+
+    headers = alpaca_headers(config, json_content=True)
     notional = None if order_value_type == "qty" else trunc(volume, 2)
     qty = volume if order_value_type == "qty" else None
     limit_price = None
+
+    if getattr(config, "dry_run", False):
+        _log_trade(
+            config,
+            symbol=symbol,
+            side=direction,
+            intent=intent,
+            order_type="market" if market_status == "open" else "limit",
+            market_session=market_status,
+            status="filled",
+            order_id="dry-run",
+            notional=notional,
+            qty=qty,
+            limit_price=limit_price,
+        )
+        return OrderResult(status="filled", order_id="dry-run")
+
+    if market_status == "open":
+        if config.slippage_guard_enabled and current_price > 0:
+            slip_err = _check_slippage(session, config, symbol, current_price)
+            if slip_err:
+                logger.warning("Slippage guard rejected %s: %s", symbol, slip_err)
+                _log_trade(
+                    config,
+                    symbol=symbol,
+                    side=direction,
+                    intent=intent,
+                    order_type="market",
+                    market_session=market_status,
+                    status="failed",
+                    notional=notional,
+                    qty=qty,
+                    error=slip_err,
+                )
+                if circuit:
+                    circuit.record_failure()
+                return OrderResult(status="failed", error=slip_err)
 
     if market_status == "open":
         payload = {
@@ -144,6 +194,8 @@ def create_order(
         if str(response.status_code) != "200":
             err = _sanitize_error(response)
             logger.error("Order failed for %s: %s", symbol, err)
+            if circuit:
+                circuit.record_failure()
             _log_trade(
                 config,
                 symbol=symbol,
@@ -161,7 +213,7 @@ def create_order(
         json_response = response.json()
         order_id = json_response["id"]
         poll_status = "open"
-        timeout = 30
+        timeout = 60  # Allow up to 60s for market orders to fill
         start_time = time.time()
         while poll_status == "open" and time.time() - start_time < timeout:
             poll_url = f"{config.urlBase}markets/v2/orders/{order_id}"
@@ -173,9 +225,19 @@ def create_order(
                 else:
                     time.sleep(1)
             else:
-                poll_status = "close"
                 err = _sanitize_error(response)
                 logger.error("Order poll failed for %s: %s", symbol, err)
+                poll_status = "close"
+                json_response = {"status": "error", "message": err}
+                if circuit:
+                    circuit.record_failure()
+                break
+
+        if poll_status == "open":
+            poll_url = f"{config.urlBase}markets/v2/orders/{order_id}"
+            final_resp = session.get(poll_url, headers=headers)
+            if str(final_resp.status_code) == "200":
+                json_response = final_resp.json()
 
         final = json_response.get("status", "")
         if final == "filled":
@@ -194,6 +256,8 @@ def create_order(
                 filled_qty=filled_qty,
                 filled_avg_price=filled_avg,
             )
+            if circuit:
+                circuit.record_success()
             return OrderResult(
                 status="filled",
                 order_id=order_id,
@@ -202,6 +266,8 @@ def create_order(
             )
 
         err = f"market order ended as {final}"
+        if circuit:
+            circuit.record_failure()
         _log_trade(
             config,
             symbol=symbol,
@@ -236,6 +302,8 @@ def create_order(
 
     err = _sanitize_error(response)
     logger.error("Limit order failed for %s: %s", symbol, err)
+    if circuit:
+        circuit.record_failure()
     _log_trade(
         config,
         symbol=symbol,

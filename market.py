@@ -3,6 +3,7 @@ import logging
 import time
 
 import remote
+from alpaca_client import alpaca_headers
 
 logger = logging.getLogger("alpaca_bot.market")
 
@@ -14,13 +15,9 @@ class MarketTracker:
         self.server = "closed"
 
 
-def check_time(session, account, config, tracker: MarketTracker):
-    headers = {
-        "accept": "application/json",
-        "content-type": "application/json",
-        "APCA-API-KEY-ID": config.apiKey,
-        "APCA-API-SECRET-KEY": config.apiSecret,
-    }
+def check_time(session, account, config, tracker: MarketTracker, *, stop_event=None) -> bool:
+    """Return True if market clock was fetched successfully."""
+    headers = alpaca_headers(config, json_content=True)
     url = f"{config.urlBase}markets/v2/clock"
     result = session.get(url, headers=headers)
     if result.status_code == 200:
@@ -67,7 +64,15 @@ def check_time(session, account, config, tracker: MarketTracker):
                         from reporting import check_in
 
                         check_in(session, int(time.time()), account, config)
-                        time.sleep(HOLIDAY_SLEEP_SECONDS)
+                        # Sleep in small increments so stop_event can interrupt
+                        sleep_remaining = HOLIDAY_SLEEP_SECONDS
+                        if stop_event:
+                            for _ in range(sleep_remaining):
+                                if stop_event.is_set():
+                                    return True
+                                time.sleep(1)
+                        else:
+                            time.sleep(HOLIDAY_SLEEP_SECONDS)
                     else:
                         logger.info(
                             "Extended hours trade start for %s-%s-%s",
@@ -98,6 +103,7 @@ def check_time(session, account, config, tracker: MarketTracker):
                 )
             else:
                 account.market = "closed"
+        return True
     else:
         remote.post_log(
             config,
@@ -109,4 +115,5 @@ def check_time(session, account, config, tracker: MarketTracker):
             result.reason,
             result.text[:200],
         )
+    return False
 

@@ -5,7 +5,8 @@ import time
 from typing import Optional
 
 import remote
-from ticker_source import find_tickers
+from alpaca_client import alpaca_headers
+from ticker_source import find_tickers, get_cached_valid_tickers
 from trade_log import append_trade, build_trade_record
 
 logger = logging.getLogger("alpaca_bot.state")
@@ -51,13 +52,9 @@ class Status:
                 close_url = (
                     f"{config.urlBase}markets/v2/positions/{symbol}?percentage=100"
                 )
-                headers = {
-                    "accept": "application/json",
-                    "content-type": "application/json",
-                    "APCA-API-KEY-ID": config.apiKey,
-                    "APCA-API-SECRET-KEY": config.apiSecret,
-                }
-                result = session.delete(close_url, headers=headers)
+                result = session.delete(
+                    close_url, headers=alpaca_headers(config, json_content=True)
+                )
                 if str(result.status_code) == "200":
                     status = result.json().get("status", "unknown")
                     logger.info("Liquidated %s; status=%s", symbol, status)
@@ -92,9 +89,19 @@ class Status:
     def check_ticker(self, session, config):
         """Update equity list for NASDAQ100 changes."""
         tickers = find_tickers(session, config)
+        if not tickers:
+            fallback = get_cached_valid_tickers()
+            if fallback:
+                logger.warning(
+                    "Ticker scrape failed; using cached list (%d tickers)", len(fallback)
+                )
+                tickers = fallback
         if tickers:
-            new_list = [
-                {
+            # Build fresh ticker entries with preserved old state
+            old_map = {t["ticker"]: t for t in self.tickers}
+            new_list = []
+            for item in tickers:
+                new_ticker = {
                     "ticker": item,
                     "volume": 0,
                     "difference": 0,
@@ -108,20 +115,23 @@ class Status:
                         "notional": None,
                     },
                 }
-                for item in tickers
-            ]
-            new_list = [
-                old_ticker if old_ticker["ticker"] == new_ticker["ticker"] else new_ticker
-                for new_ticker in new_list
-                for old_ticker in self.tickers
-                if old_ticker["ticker"] == new_ticker["ticker"]
-            ] or new_list
+                if item in old_map:
+                    old = old_map[item]
+                    # Preserve volume, price, difference, and limitTrade for unchanged tickers
+                    new_ticker["volume"] = old.get("volume", 0)
+                    new_ticker["price"] = old.get("price", 0)
+                    new_ticker["difference"] = old.get("difference", 0)
+                    new_ticker["limitTrade"] = old.get("limitTrade", new_ticker["limitTrade"])
+                new_list.append(new_ticker)
             self.tickers = new_list
             self.save_state()
             remote.post_log(config, "Tickers updated", config.title, "1")
         else:
             remote.post_log(config, "Tickers not scraped!", config.title, "3")
-            time.sleep(5 * 60)
+            if self.tickers:
+                logger.warning("Keeping previous ticker list (%d tickers)", len(self.tickers))
+            else:
+                time.sleep(5 * 60)
 
     def save_state(self, path: Optional[str] = None):
         target = path or self.STATE_FILE

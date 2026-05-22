@@ -30,6 +30,11 @@ Logging examples:
         action="store_true",
         help="Create trading_state.json from .env and exit",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Run rebalance logic without submitting orders to Alpaca",
+    )
     add_log_level_args(parser)
     args = parser.parse_args()
 
@@ -41,8 +46,11 @@ Logging examples:
         print(f"Configuration error: {exc}", file=sys.stderr)
         sys.exit(1)
 
+    config.dry_run = args.dry_run
     setup_logging(config)
     log_remote_disabled_once(config, logger)
+    if config.dry_run:
+        logger.warning("Dry-run mode: orders will not be sent to Alpaca")
     logger.debug("Logging at %s", config.log_level)
 
     account = Status()

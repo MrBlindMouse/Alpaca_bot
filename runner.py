@@ -12,6 +12,7 @@ from alpaca_client import create_session
 from config import Config, log_remote_disabled_once
 from market import MarketTracker
 from reporting import day_end
+from resilience import CircuitBreaker
 from scheduler import bot_loop, check_balances
 from state import Status
 
@@ -31,6 +32,7 @@ class BotRunner:
         self._last_loop_at: Optional[float] = None
         self._last_error: Optional[str] = None
         self._jobs_registered = False
+        self.circuit = CircuitBreaker()
 
     @property
     def running(self) -> bool:
@@ -48,6 +50,10 @@ class BotRunner:
 
     def reload_config(self):
         self.config.update()
+        self.circuit = CircuitBreaker(
+            failure_threshold=self.config.circuit_failure_threshold,
+            backoff_seconds=self.config.circuit_backoff_seconds,
+        )
 
     def _register_jobs(self):
         schedule.clear()
@@ -69,6 +75,8 @@ class BotRunner:
                 self.account,
                 self.config,
                 self.tracker,
+                stop_event=self._stop,
+                circuit=self.circuit,
             )
             self._last_error = None
         except Exception as exc:
@@ -79,7 +87,9 @@ class BotRunner:
 
     def _safe_check_balances(self):
         try:
-            check_balances(self.session, self.account, self.config)
+            check_balances(
+                self.session, self.account, self.config, circuit=self.circuit
+            )
         except Exception as exc:
             self._last_error = str(exc)
             logger.exception("check_balances failed")
@@ -100,6 +110,11 @@ class BotRunner:
     def start(self) -> None:
         if self.running:
             return
+        self.config.update()
+        self.circuit = CircuitBreaker(
+            failure_threshold=self.config.circuit_failure_threshold,
+            backoff_seconds=self.config.circuit_backoff_seconds,
+        )
         self.account.load_state()
         self._stop.clear()
         if not self._jobs_registered:

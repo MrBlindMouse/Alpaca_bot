@@ -31,21 +31,35 @@ def bmd_logger(function):
 
 
 @bmd_logger
-def bot_loop(session, account, config, tracker: MarketTracker):
+def bot_loop(session, account, config, tracker: MarketTracker, *, stop_event=None, circuit=None):
     config.update()
     log_remote_disabled_once(config, logger)
     account.margin = config.margin
-    check_time(session, account, config, tracker)
-    if account.market in ("open", "extended"):
-        bot(session, account, config)
+    clock_ok = check_time(session, account, config, tracker, stop_event=stop_event)
+    if circuit:
+        if clock_ok:
+            circuit.record_success()
+        else:
+            circuit.record_failure()
+    if circuit and circuit.is_paused():
+        logger.warning("Circuit breaker open; skipping rebalance this tick")
+    elif account.market in ("open", "extended"):
+        bot(session, account, config, circuit=circuit)
+        account.save_state()
     account.save_state()
     check_in(session, int(time.time()), account, config)
 
 
-def check_balances(session, account, config):
+def check_balances(session, account, config, circuit=None):
     if account.market not in ("closed", "holiday"):
         from alpaca_client import get_balances
 
         positions = get_balances(session, config)
-        if positions is not None:
+        if positions is None:
+            logger.warning("check_balances skipped: could not load positions")
+            if circuit:
+                circuit.record_failure()
+        else:
             account.check_balances(session, positions, config)
+            if circuit:
+                circuit.record_success()

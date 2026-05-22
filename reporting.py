@@ -2,7 +2,7 @@ import datetime
 import logging
 
 import remote
-from alpaca_client import get_account, get_balances
+from alpaca_client import alpaca_headers, get_account, get_balances
 from utils import trunc
 
 logger = logging.getLogger("alpaca_bot.reporting")
@@ -27,12 +27,7 @@ def day_end(session, account, config):
         f"{config.urlBase}markets/v2/account/activities"
         "?activity_types=CSD,CSW&direction=desc&page_size=100"
     )
-    headers = {
-        "accept": "application/json",
-        "APCA-API-KEY-ID": config.apiKey,
-        "APCA-API-SECRET-KEY": config.apiSecret,
-    }
-    response = session.get(url, headers=headers)
+    response = session.get(url, headers=alpaca_headers(config))
     if response.status_code == 200:
         for entry in response.json():
             if entry["activity_type"] == "CSD":

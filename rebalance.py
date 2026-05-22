@@ -2,7 +2,7 @@ import datetime
 import logging
 
 import remote
-from alpaca_client import get_account, get_balances
+from alpaca_client import alpaca_headers, get_account, get_balances
 from orders import create_order, log_limit_status
 from utils import trunc
 
@@ -86,13 +86,8 @@ def _apply_order_result(session, config, account, key, ticker, result, balance_v
         account.tickers[key]["limitTrade"] = lt
 
 
-def bot(session, account, config):
-    headers = {
-        "accept": "application/json",
-        "content-type": "application/json",
-        "APCA-API-KEY-ID": config.apiKey,
-        "APCA-API-SECRET-KEY": config.apiSecret,
-    }
+def bot(session, account, config, circuit=None):
+    headers = alpaca_headers(config, json_content=True)
     dt_object = datetime.datetime.fromtimestamp(account.serverTime, datetime.timezone.utc)
     high_ticker = {"ticker": "", "diff": 0}
     base_balance = 0.0
@@ -162,27 +157,46 @@ def bot(session, account, config):
                     if json_result["status"] in ["filled", "canceled", "expired"]:
                         _handle_limit_update(session, config, account, key, ticker, json_result)
                     elif (account.serverTime - ticker["limitTrade"]["ts"]) > LIMIT_ORDER_MAX_AGE_SECONDS:
-                        delete_url = (
-                            f"{config.urlBase}markets/v2/orders/{ticker['limitTrade']['id']}"
-                        )
-                        result = session.delete(delete_url, headers=headers)
-                        if str(result.status_code) == "204":
-                            logger.info("Cancelled old limit order for %s", ticker["ticker"])
-                            log_limit_status(
-                                config,
-                                symbol=ticker["ticker"],
-                                side=_limit_meta(ticker).get("side", "buy"),
-                                intent=_limit_meta(ticker).get("intent", "rebalance"),
-                                market_session=account.market,
-                                order_id=ticker["limitTrade"]["id"],
-                                alpaca_status="canceled",
-                                notional=_limit_meta(ticker).get("notional"),
-                            )
+                        # Re-fetch status right before cancelling to avoid fill-cancel race
+                        cancel_result = session.get(open_url, headers=headers)
+                        if str(cancel_result.status_code) == "200":
+                            current_status = cancel_result.json().get("status", "")
+                            if current_status in ("new", "accepted"):
+                                delete_url = (
+                                    f"{config.urlBase}markets/v2/orders/{ticker['limitTrade']['id']}"
+                                )
+                                result = session.delete(delete_url, headers=headers)
+                                if str(result.status_code) == "204":
+                                    logger.info("Cancelled old limit order for %s", ticker["ticker"])
+                                    log_limit_status(
+                                        config,
+                                        symbol=ticker["ticker"],
+                                        side=_limit_meta(ticker).get("side", "buy"),
+                                        intent=_limit_meta(ticker).get("intent", "rebalance"),
+                                        market_session=account.market,
+                                        order_id=ticker["limitTrade"]["id"],
+                                        alpaca_status="canceled",
+                                        notional=_limit_meta(ticker).get("notional"),
+                                    )
+                                else:
+                                    logger.error(
+                                        "Failed to cancel limit order %s: %s",
+                                        ticker["limitTrade"]["id"],
+                                        result.status_code,
+                                    )
+                            else:
+                                # Order filled/cancelled/expired — don't attempt cancellation
+                                logger.info(
+                                    "Skipping cancel for %s: status=%s",
+                                    ticker["ticker"],
+                                    current_status,
+                                )
+                                _handle_limit_update(session, config, account, key, ticker, cancel_result.json())
                         else:
                             logger.error(
-                                "Failed to cancel limit order %s: %s",
+                                "Failed to re-check order %s before cancel: %s",
                                 ticker["limitTrade"]["id"],
-                                result.status_code,
+                                cancel_result.reason,
                             )
                         account.tickers[key]["limitTrade"] = {
                             "open": False,
@@ -224,6 +238,7 @@ def bot(session, account, config):
                     intent="rebalance_initial",
                     market_status=account.market,
                     current_price=ticker["price"],
+                    circuit=circuit,
                 )
                 _apply_order_result(
                     session, config, account, key, ticker, order_result, balance_value, "initial buy"
@@ -252,6 +267,7 @@ def bot(session, account, config):
                             intent="rebalance_sell",
                             market_status=account.market,
                             current_price=ticker["price"],
+                            circuit=circuit,
                         )
                         _apply_order_result(
                             session, config, account, key, ticker, order_result, sell_value, "sell"
@@ -277,6 +293,7 @@ def bot(session, account, config):
                             intent="rebalance_buy",
                             market_status=account.market,
                             current_price=ticker["price"],
+                            circuit=circuit,
                         )
                         _apply_order_result(
                             session, config, account, key, ticker, order_result, buy_value, "buy"
