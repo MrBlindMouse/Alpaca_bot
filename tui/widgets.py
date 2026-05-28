@@ -177,7 +177,10 @@ def analytics_row_cells(
         _styled_cell(stats.filled_count, style),
         _styled_cell(format_money(stats.buy_dollars), style),
         _styled_cell(format_money(stats.sell_dollars), style),
-        _styled_cell(format_pl(stats.net_flow), style),
+        _styled_cell(
+            format_money(stats.current_price) if stats.current_price is not None else "—",
+            style,
+        ),
         _styled_cell(format_pl(trading) if trading is not None else "—", style),
         _styled_cell(format_pl(unreal) if unreal is not None else "—", style),
         _styled_cell(swing_txt, style),
@@ -242,7 +245,7 @@ def ticker_table_rows(stats: dict, margin: float) -> List[tuple]:
                 str(s.filled_count),
                 format_money(s.buy_notional),
                 format_money(s.sell_notional),
-                format_pl(s.net_flow),
+                format_money(s.current_price),
                 format_pl(s.unrealized_pl),
                 format_pct(s.swing_pct),
             )

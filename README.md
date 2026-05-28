@@ -154,9 +154,12 @@ The **Analytics** tab combines `trades.jsonl` (filtered by period) with `trading
 
 | Column | Meaning |
 |--------|---------|
+| **Price** | Current share price from Alpaca positions after refresh, otherwise from `trading_state.json`. |
 | **Trading P/L** | `(sell $ − buy $) + (net rebalance qty × current price)` for **filled** rebalance trades (`rebalance_buy`, `rebalance_sell`, `rebalance`) in the period. Excludes initial buys (`rebalance_initial`) and orphan liquidations (`liquidate`). `—` when there were no rebalance fills for that symbol. Summary line shows the portfolio total. |
 | **Unreal. P/L** | Alpaca `market_value − cost_basis` after **Refresh from Alpaca**. |
 | **Swing %** | How far the position is from the bot’s equal-weight target (rebalance band), not daily stock return. |
+
+Summary **Avg Net $** is the per-ticker rebalance target: `equity ÷ (ticker_count + ticker_count×margin÷2)` (same as the live rebalance loop).
 
 **Trade activity** (footer chart) ranks symbols by **filled** trade count in the period, not failed or limit-placed orders.
 

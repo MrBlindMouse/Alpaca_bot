@@ -33,11 +33,10 @@ def test_sort_ticker_stats_reverse():
     assert [sym for sym, _ in ordered] == ["b", "a"]
 
 
-def test_analytics_sort_value_net():
+def test_analytics_sort_value_price():
     s = TickerStats(symbol="A")
-    s.buy_notional = 20.0
-    s.sell_notional = 30.5
-    assert analytics_sort_value(s, "net") == -10.5
+    s.current_price = 142.5
+    assert analytics_sort_value(s, "price") == 142.5
 
 
 def test_sort_trades_by_notional():

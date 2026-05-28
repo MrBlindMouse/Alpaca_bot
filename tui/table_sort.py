@@ -26,8 +26,8 @@ def analytics_sort_value(stats: TickerStats, column: str) -> Any:
         return stats.buy_dollars
     if column == "sell":
         return stats.sell_dollars
-    if column == "net":
-        return stats.net_flow
+    if column == "price":
+        return _nullable_number(stats.current_price)
     if column == "trading_pl":
         return _nullable_number(stats.trading_pl)
     if column == "unreal_pl":

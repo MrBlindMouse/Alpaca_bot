@@ -2,11 +2,14 @@ import json
 import os
 import tempfile
 
+import pytest
+
 from analytics import (
     _fill_dollars,
     _fill_qty,
     activity_bars,
     aggregate_by_ticker,
+    compute_balance_target,
     compute_trading_pl,
     load_trades,
     portfolio_summary,
@@ -34,6 +37,22 @@ def test_load_trades_and_aggregate():
         assert stats["AAPL"].sell_dollars == 50
         assert stats["AAPL"].net_flow == 50
         assert stats["MSFT"].failed_count == 1
+
+
+def test_compute_balance_target_matches_rebalance():
+    # equity / (n + n*margin/2) for n=100, margin=0.05
+    target = compute_balance_target(100_000.0, 100, 0.05)
+    assert target == pytest.approx(100_000.0 / (100 + 2.5))
+
+
+def test_portfolio_summary_avg_balance_target():
+    state = {
+        "equity": 100_000.0,
+        "margin": 0.05,
+        "tickers": [{"ticker": f"T{i}", "difference": 0} for i in range(100)],
+    }
+    summary = portfolio_summary([], state=state)
+    assert summary.avg_balance_target == pytest.approx(100_000.0 / 102.5)
 
 
 def test_portfolio_summary():

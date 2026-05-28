@@ -52,6 +52,7 @@ class PortfolioSummary:
     filled_count: int = 0
     fill_rate: float = 0.0
     trading_pl: float = 0.0
+    avg_balance_target: Optional[float] = None
     most_active_symbol: str = ""
     largest_swing_symbol: str = ""
     largest_swing_pct: float = 0.0
@@ -107,6 +108,17 @@ def _fill_qty(row: dict) -> Optional[float]:
         except (TypeError, ValueError):
             pass
     return None
+
+
+def compute_balance_target(
+    equity: float,
+    ticker_count: int,
+    margin: float,
+) -> Optional[float]:
+    """Per-ticker $ target the bot rebalances toward (matches rebalance.py base_balance)."""
+    if equity <= 0 or ticker_count <= 0:
+        return None
+    return equity / (ticker_count + (ticker_count * margin) / 2)
 
 
 def compute_trading_pl(
@@ -293,9 +305,18 @@ def portfolio_summary(
             )
 
     if state and state.get("tickers"):
-        best = max(state["tickers"], key=lambda t: float(t.get("difference", 0)))
+        tickers = state["tickers"]
+        best = max(tickers, key=lambda t: float(t.get("difference", 0)))
         summary.largest_swing_symbol = best.get("ticker", "")
         summary.largest_swing_pct = float(best.get("difference", 0)) * 100
+        equity = summary.equity
+        if equity <= 0:
+            equity = float(state.get("equity", 0) or 0)
+        summary.avg_balance_target = compute_balance_target(
+            equity,
+            len(tickers),
+            float(state.get("margin", 0) or 0),
+        )
 
     return summary
 

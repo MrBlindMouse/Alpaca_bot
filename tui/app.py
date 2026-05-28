@@ -356,7 +356,7 @@ class AlpacaApp(App):
             ("Filled", "filled"),
             ("Buy $", "buy"),
             ("Sell $", "sell"),
-            ("Net $", "net"),
+            ("Price", "price"),
             ("Trading P/L", "trading_pl"),
             ("Unreal. P/L", "unreal_pl"),
             ("Swing %", "swing"),
@@ -589,6 +589,7 @@ class AlpacaApp(App):
             f"[b]Trades[/b] {summary.trade_count}  "
             f"[b]Filled[/b] {summary.filled_count} ({summary.fill_rate:.0%})  "
             f"[b]Equity[/b] {format_money(summary.equity)}  "
+            f"[b]Avg Net $[/b] {format_money(summary.avg_balance_target)}  "
             f"[b]Cash[/b] {format_money(summary.cash)}  "
             f"[b]Trading P/L[/b] {format_pl_rich(summary.trading_pl)}  "
             f"[b]Unreal. P/L[/b] {format_pl_rich(summary.unrealized_pl)}  "
