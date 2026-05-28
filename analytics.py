@@ -10,6 +10,8 @@ from trade_log import DEFAULT_TRADE_FILE
 
 PERIOD_DAYS = {"today": 1, "7d": 7, "30d": 30, "all": None}
 
+TRADING_INTENTS = frozenset({"rebalance_buy", "rebalance_sell", "rebalance"})
+
 
 @dataclass
 class TickerStats:
@@ -22,7 +24,7 @@ class TickerStats:
     sell_dollars: float = 0.0
     held_qty: float = 0.0
     current_price: Optional[float] = None
-    liquidation_pl: Optional[float] = None
+    trading_pl: Optional[float] = None
     failed_count: int = 0
     limit_placed_count: int = 0
     last_trade_ts: Optional[str] = None
@@ -30,6 +32,10 @@ class TickerStats:
     market_value: Optional[float] = None
     weight_pct: Optional[float] = None
     swing_pct: Optional[float] = None
+    _trading_buy_dollars: float = 0.0
+    _trading_sell_dollars: float = 0.0
+    _trading_buy_qty: float = 0.0
+    _trading_sell_qty: float = 0.0
 
     @property
     def net_flow(self) -> float:
@@ -45,10 +51,15 @@ class PortfolioSummary:
     trade_count: int = 0
     filled_count: int = 0
     fill_rate: float = 0.0
+    trading_pl: float = 0.0
     most_active_symbol: str = ""
     largest_swing_symbol: str = ""
     largest_swing_pct: float = 0.0
     intent_counts: Dict[str, int] = field(default_factory=dict)
+
+
+def _is_trading_intent(intent: Optional[str]) -> bool:
+    return (intent or "") in TRADING_INTENTS
 
 
 def _parse_ts(ts: str) -> Optional[datetime]:
@@ -78,17 +89,39 @@ def _fill_dollars(row: dict) -> Optional[float]:
     return None
 
 
-def compute_liquidation_pl(
+def _fill_qty(row: dict) -> Optional[float]:
+    """Share quantity of a filled trade: filled_qty, or notional / price."""
+    qty = row.get("filled_qty")
+    if qty not in (None, "", "0"):
+        try:
+            return float(qty)
+        except (TypeError, ValueError):
+            pass
+    dollars = _fill_dollars(row)
+    price = row.get("filled_avg_price")
+    if dollars is not None and price not in (None, "", "0"):
+        try:
+            p = float(price)
+            if p > 0:
+                return dollars / p
+        except (TypeError, ValueError):
+            pass
+    return None
+
+
+def compute_trading_pl(
     buy_dollars: float,
     sell_dollars: float,
-    held_qty: float,
+    buy_qty: float,
+    sell_qty: float,
     current_price: Optional[float],
 ) -> Optional[float]:
-    """(sell $ + held × current price) − buy $. None if no buys in period."""
-    if buy_dollars <= 0:
+    """(sell $ − buy $) + (net rebalance qty × price). None if no rebalance fills."""
+    if buy_dollars == 0 and sell_dollars == 0 and buy_qty == 0 and sell_qty == 0:
         return None
-    mark = held_qty * (current_price or 0.0)
-    return (sell_dollars + mark) - buy_dollars
+    net_qty = buy_qty - sell_qty
+    price = current_price or 0.0
+    return (sell_dollars - buy_dollars) + (net_qty * price)
 
 
 def _position_qty_price(pos: dict) -> Tuple[float, Optional[float]]:
@@ -159,6 +192,18 @@ def aggregate_by_ticker(
                 elif row.get("side") == "sell":
                     s.sell_dollars += dollars
                     s.sell_notional += dollars
+            if _is_trading_intent(row.get("intent")):
+                if dollars is not None:
+                    if row.get("side") == "buy":
+                        s._trading_buy_dollars += dollars
+                    elif row.get("side") == "sell":
+                        s._trading_sell_dollars += dollars
+                qty = _fill_qty(row)
+                if qty is not None:
+                    if row.get("side") == "buy":
+                        s._trading_buy_qty += qty
+                    elif row.get("side") == "sell":
+                        s._trading_sell_qty += qty
         elif status == "failed":
             s.failed_count += 1
         elif status == "limit_placed":
@@ -195,10 +240,11 @@ def aggregate_by_ticker(
             stats[sym].weight_pct = (mv / account_equity) * 100
 
     for s in stats.values():
-        s.liquidation_pl = compute_liquidation_pl(
-            s.buy_dollars,
-            s.sell_dollars,
-            s.held_qty,
+        s.trading_pl = compute_trading_pl(
+            s._trading_buy_dollars,
+            s._trading_sell_dollars,
+            s._trading_buy_qty,
+            s._trading_sell_qty,
             s.current_price,
         )
 
@@ -210,12 +256,18 @@ def portfolio_summary(
     state: Optional[dict] = None,
     account: Optional[dict] = None,
     positions: Optional[List[dict]] = None,
+    ticker_stats: Optional[Dict[str, TickerStats]] = None,
 ) -> PortfolioSummary:
     summary = PortfolioSummary()
     summary.trade_count = len(trades)
     summary.filled_count = sum(1 for t in trades if t.get("status") == "filled")
     if summary.trade_count:
         summary.fill_rate = summary.filled_count / summary.trade_count
+
+    if ticker_stats:
+        summary.trading_pl = sum(
+            s.trading_pl for s in ticker_stats.values() if s.trading_pl is not None
+        )
 
     intent_counts: Dict[str, int] = defaultdict(int)
     symbol_counts: Dict[str, int] = defaultdict(int)
@@ -249,21 +301,21 @@ def portfolio_summary(
 
 
 def activity_bars(ticker_stats: Dict[str, TickerStats], width: int = 20) -> List[tuple]:
-    """Unicode block bars for relative trade activity."""
+    """Unicode block bars for relative filled-trade activity."""
     if not ticker_stats:
         return []
     items = sorted(
         ticker_stats.values(),
-        key=lambda s: s.trade_count,
+        key=lambda s: s.filled_count,
         reverse=True,
     )[:width]
-    max_count = max(s.trade_count for s in items) or 1
+    max_count = max(s.filled_count for s in items) or 1
     blocks = " ▁▂▃▄▅▆▇"
     result = []
     for s in items:
-        level = int((s.trade_count / max_count) * (len(blocks) - 1))
+        level = int((s.filled_count / max_count) * (len(blocks) - 1))
         bar = blocks[level] * 8 if level else blocks[0]
-        result.append((s.symbol, bar, s.trade_count))
+        result.append((s.symbol, bar, s.filled_count))
     return result
 
 

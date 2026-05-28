@@ -77,7 +77,7 @@ Use the **tab bar** or footer keys `1`–`6` to switch views. The status bar als
 
 On the **Logs** tab, new lines are appended without clearing the viewer (scroll position is preserved). Press `r` to reload the full log window.
 
-**Tables:** Click a column header to sort. Numeric columns sort by value, not as text. **Trades** rows use a muted green (buy) or blue-gray (sell) tint. **Analytics** rows use a muted green/red tint by liquidation P/L sign.
+**Tables:** Click a column header to sort. Numeric columns sort by value, not as text. **Trades** rows use a muted green (buy) or blue-gray (sell) tint. **Analytics** rows use a muted green/red tint by trading P/L sign.
 
 ![TUI screenshot](docs/tui-screenshot.png)
 
@@ -154,11 +154,13 @@ The **Analytics** tab combines `trades.jsonl` (filtered by period) with `trading
 
 | Column | Meaning |
 |--------|---------|
-| **Liq. P/L** | `(sell $ + held × current price) − buy $` for **filled** trades in the selected period, plus marking open shares at current price (state or Alpaca). `—` when there were no buys in that period. |
+| **Trading P/L** | `(sell $ − buy $) + (net rebalance qty × current price)` for **filled** rebalance trades (`rebalance_buy`, `rebalance_sell`, `rebalance`) in the period. Excludes initial buys (`rebalance_initial`) and orphan liquidations (`liquidate`). `—` when there were no rebalance fills for that symbol. Summary line shows the portfolio total. |
 | **Unreal. P/L** | Alpaca `market_value − cost_basis` after **Refresh from Alpaca**. |
 | **Swing %** | How far the position is from the bot’s equal-weight target (rebalance band), not daily stock return. |
 
-Use period **All** for a full P/L picture; **Today** / **7d** only count buys and sells logged in that window (holdings can show `—` for Liq. P/L if nothing was bought recently).
+**Trade activity** (footer chart) ranks symbols by **filled** trade count in the period, not failed or limit-placed orders.
+
+Use period **All** for a full trading P/L picture; shorter windows only include rebalance fills logged in that range.
 
 Click a **column header** to sort (click again to reverse).
 

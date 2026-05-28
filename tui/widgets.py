@@ -128,10 +128,10 @@ def _trade_row_style(side: str) -> str:
     return TRADE_STYLE_DEFAULT
 
 
-def _analytics_row_style(liquidation_pl: Optional[float]) -> str:
-    if liquidation_pl is None or liquidation_pl == 0:
+def _analytics_row_style(trading_pl: Optional[float]) -> str:
+    if trading_pl is None or trading_pl == 0:
         return ANALYTICS_STYLE_DEFAULT
-    if liquidation_pl > 0:
+    if trading_pl > 0:
         return ANALYTICS_STYLE_POSITIVE
     return ANALYTICS_STYLE_NEGATIVE
 
@@ -162,9 +162,9 @@ def analytics_row_cells(
     sym: str,
     stats: TickerStats,
 ) -> Tuple[Any, ...]:
-    """Full row tint by liquidation P/L sign (muted green / red)."""
-    style = _analytics_row_style(stats.liquidation_pl)
-    liq = stats.liquidation_pl
+    """Full row tint by trading P/L sign (muted green / red)."""
+    style = _analytics_row_style(stats.trading_pl)
+    trading = stats.trading_pl
     unreal = stats.unrealized_pl
     swing_txt = (
         format_swing_plain(stats.swing_pct)
@@ -178,7 +178,7 @@ def analytics_row_cells(
         _styled_cell(format_money(stats.buy_dollars), style),
         _styled_cell(format_money(stats.sell_dollars), style),
         _styled_cell(format_pl(stats.net_flow), style),
-        _styled_cell(format_pl(liq) if liq is not None else "—", style),
+        _styled_cell(format_pl(trading) if trading is not None else "—", style),
         _styled_cell(format_pl(unreal) if unreal is not None else "—", style),
         _styled_cell(swing_txt, style),
     )
@@ -191,10 +191,10 @@ def format_activity_chart(
 ) -> str:
     """Aligned unicode bar chart for analytics footer."""
     if not items:
-        return "[dim](no trades in period)[/dim]"
+        return "[dim](no filled trades in period)[/dim]"
     max_count = max(cnt for _, cnt in items) or 1
     lines = [
-        f"[b]{title}[/b] [dim](top {len(items)} by count)[/dim]",
+        f"[b]{title}[/b] [dim](top {len(items)} by filled count)[/dim]",
         f"[dim]{'SYMBOL'.ljust(SYMBOL_WIDTH)}  {'BAR'.ljust(BAR_WIDTH)}  COUNT[/dim]",
     ]
     for sym, cnt in items:

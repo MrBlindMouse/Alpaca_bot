@@ -73,7 +73,7 @@ def analytics_signature(
                 round(s.buy_dollars, 2),
                 round(s.sell_dollars, 2),
                 round(s.net_flow, 2),
-                None if s.liquidation_pl is None else round(s.liquidation_pl, 2),
+                None if s.trading_pl is None else round(s.trading_pl, 2),
                 None if s.unrealized_pl is None else round(s.unrealized_pl, 2),
                 None if s.swing_pct is None else round(s.swing_pct, 2),
             )

@@ -357,7 +357,7 @@ class AlpacaApp(App):
             ("Buy $", "buy"),
             ("Sell $", "sell"),
             ("Net $", "net"),
-            ("Liq. P/L", "liq_pl"),
+            ("Trading P/L", "trading_pl"),
             ("Unreal. P/L", "unreal_pl"),
             ("Swing %", "swing"),
         ):
@@ -578,7 +578,11 @@ class AlpacaApp(App):
             account_equity=equity,
         )
         summary = portfolio_summary(
-            self._trades, state=st, account=self._account, positions=self._positions
+            self._trades,
+            state=st,
+            account=self._account,
+            positions=self._positions,
+            ticker_stats=stats,
         )
         sm = self.query_one("#analytics_summary", Static)
         sm.update(
@@ -586,12 +590,14 @@ class AlpacaApp(App):
             f"[b]Filled[/b] {summary.filled_count} ({summary.fill_rate:.0%})  "
             f"[b]Equity[/b] {format_money(summary.equity)}  "
             f"[b]Cash[/b] {format_money(summary.cash)}  "
+            f"[b]Trading P/L[/b] {format_pl_rich(summary.trading_pl)}  "
             f"[b]Unreal. P/L[/b] {format_pl_rich(summary.unrealized_pl)}  "
             f"[b]Active[/b] {summary.most_active_symbol or '—'}  "
             f"[b]Top swing[/b] {summary.largest_swing_symbol} "
             f"{summary.largest_swing_pct:.1f}%\n"
-            f"[dim]Liq. P/L = (sell $ + held×price) − buy $ (fills in period). "
-            "Period All for full history. Click headers to sort.[/dim]"
+            f"[dim]Trading P/L = (sell $ − buy $) + net rebalance qty×price "
+            "(rebalance fills only; excludes initial buy and liquidation). "
+            "Click headers to sort.[/dim]"
         )
         table = self.query_one("#analytics_table", DataTable)
         sig = analytics_signature(

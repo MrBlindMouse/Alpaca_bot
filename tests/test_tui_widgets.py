@@ -54,7 +54,7 @@ def test_trade_row_cells_sell_row_tint():
 def test_analytics_row_cells_positive_liq_row_tint():
     s = TickerStats(symbol="X")
     s.trade_count = 1
-    s.liquidation_pl = 10.0
+    s.trading_pl = 10.0
     s.buy_dollars = 100
     cells = analytics_row_cells("X", s)
     assert isinstance(cells[0], Text)
@@ -63,7 +63,7 @@ def test_analytics_row_cells_positive_liq_row_tint():
 
 def test_analytics_row_cells_negative_liq_row_tint():
     s = TickerStats(symbol="Y")
-    s.liquidation_pl = -5.0
+    s.trading_pl = -5.0
     cells = analytics_row_cells("Y", s)
     assert isinstance(cells[0], Text)
     assert "180,120,120" in str(cells[0].style)

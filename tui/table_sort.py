@@ -28,8 +28,8 @@ def analytics_sort_value(stats: TickerStats, column: str) -> Any:
         return stats.sell_dollars
     if column == "net":
         return stats.net_flow
-    if column == "liq_pl":
-        return _nullable_number(stats.liquidation_pl)
+    if column == "trading_pl":
+        return _nullable_number(stats.trading_pl)
     if column == "unreal_pl":
         return _nullable_number(stats.unrealized_pl)
     if column == "swing":
