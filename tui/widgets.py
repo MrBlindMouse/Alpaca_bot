@@ -1,5 +1,6 @@
 """Reusable TUI helpers."""
 
+import os
 from datetime import datetime, timezone
 from typing import Any, List, Optional, Sequence, Tuple
 
@@ -19,6 +20,11 @@ TRADE_STYLE_DEFAULT = ""
 ANALYTICS_STYLE_POSITIVE = "rgb(106,158,110)"
 ANALYTICS_STYLE_NEGATIVE = "rgb(180,120,120)"
 ANALYTICS_STYLE_DEFAULT = ""
+
+
+def use_ascii_charts() -> bool:
+    """Use ASCII bar chars when ALPACA_TUI_ASCII=1 (SSH/tmux without UTF-8)."""
+    return os.environ.get("ALPACA_TUI_ASCII", "").lower() in ("1", "true", "yes")
 
 
 def format_money(value: Optional[float]) -> str:
@@ -191,10 +197,15 @@ def format_activity_chart(
     items: Sequence[Tuple[str, int]],
     *,
     title: str = "Trade activity",
+    ascii_bars: Optional[bool] = None,
 ) -> str:
-    """Aligned unicode bar chart for analytics footer."""
+    """Aligned bar chart for analytics footer (Unicode or ASCII)."""
     if not items:
         return "[dim](no filled trades in period)[/dim]"
+    if ascii_bars is None:
+        ascii_bars = use_ascii_charts()
+    fill_ch = "#" if ascii_bars else "█"
+    empty_ch = "-" if ascii_bars else "░"
     max_count = max(cnt for _, cnt in items) or 1
     lines = [
         f"[b]{title}[/b] [dim](top {len(items)} by filled count)[/dim]",
@@ -204,7 +215,7 @@ def format_activity_chart(
         filled = int((cnt / max_count) * BAR_WIDTH) if cnt else 0
         if cnt > 0 and filled == 0:
             filled = 1
-        bar_display = ("█" * filled + "░" * (BAR_WIDTH - filled))[:BAR_WIDTH]
+        bar_display = (fill_ch * filled + empty_ch * (BAR_WIDTH - filled))[:BAR_WIDTH]
         lines.append(
             f"{sym[:SYMBOL_WIDTH].ljust(SYMBOL_WIDTH)}  "
             f"[#58a6ff]{bar_display}[/]  {cnt:>4}"

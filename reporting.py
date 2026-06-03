@@ -2,7 +2,8 @@ import datetime
 import logging
 
 import remote
-from alpaca_client import alpaca_headers, get_account, get_balances
+from alpaca_client import AlpacaAPIError, alpaca_headers, get_account, get_balances
+from analytics import compute_balance_target
 from utils import trunc
 
 logger = logging.getLogger("alpaca_bot.reporting")
@@ -15,7 +16,11 @@ def day_end(session, account, config):
     if balances is None:
         logger.warning("day_end skipped: could not load balances")
         return
-    base = get_account(session, config)
+    try:
+        base = get_account(session, config)
+    except AlpacaAPIError as exc:
+        logger.warning("day_end skipped: %s", exc)
+        return
     cash = float(base["cash"])
     cost = cash
     equity = cash
@@ -76,7 +81,11 @@ def check_in(session, ts, account, config):
         return
 
     general_swing = general_swing / len(account.tickers)
-    balance_value = account.equity / (len(account.tickers) * (1 + account.margin))
+    balance_value = compute_balance_target(
+        account.equity,
+        len(account.tickers),
+        account.margin,
+    ) or 0.0
     now = datetime.datetime.now()
     display_str = f"""
     <div style="padding:5px;">
@@ -89,9 +98,9 @@ def check_in(session, ts, account, config):
     remote.post_dashboard(
         config,
         {
-            "id": "02",
+            "id": "02" if config.title == "Alpaca" else "03",
             "ts": str(ts),
-            "name": "Alpaca",
+            "name": config.title,
             "json_string": display_str,
         },
     )

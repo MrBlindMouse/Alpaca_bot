@@ -2,12 +2,13 @@ import logging
 import sys
 import time
 import traceback
+from typing import Optional, Tuple
 
 import remote
 from config import log_remote_disabled_once
-from market import MarketTracker, check_time
-from rebalance import bot
-from reporting import check_in, day_end
+from market import ClockSnapshot, MarketTracker, check_time
+from rebalance import bot, maintain_open_limits
+from reporting import check_in
 
 logger = logging.getLogger("alpaca_bot.scheduler")
 
@@ -31,23 +32,36 @@ def bmd_logger(function):
 
 
 @bmd_logger
-def bot_loop(session, account, config, tracker: MarketTracker, *, stop_event=None, circuit=None):
+def bot_loop(
+    session,
+    account,
+    config,
+    tracker: MarketTracker,
+    *,
+    stop_event=None,
+    circuit=None,
+) -> Tuple[bool, Optional[ClockSnapshot]]:
+    del stop_event
     config.update()
     log_remote_disabled_once(config, logger)
     account.margin = config.margin
-    clock_ok = check_time(session, account, config, tracker, stop_event=stop_event)
+    clock_ok, snapshot = check_time(session, account, config, tracker)
     if circuit:
         if clock_ok:
             circuit.record_success()
         else:
             circuit.record_failure()
-    if circuit and circuit.is_paused():
-        logger.warning("Circuit breaker open; skipping rebalance this tick")
-    elif account.market in ("open", "extended"):
-        bot(session, account, config, circuit=circuit)
+            logger.warning("Market clock stale; skipping state persist this tick")
+    if account.market in ("open", "extended"):
+        maintain_open_limits(session, account, config)
+        if circuit and circuit.is_paused():
+            logger.warning("Circuit breaker open; skipping rebalance this tick")
+        else:
+            bot(session, account, config, circuit=circuit)
+    if clock_ok:
         account.save_state()
-    account.save_state()
     check_in(session, int(time.time()), account, config)
+    return clock_ok, snapshot
 
 
 def check_balances(session, account, config, circuit=None):

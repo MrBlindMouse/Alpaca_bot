@@ -2,5 +2,4 @@ python-dotenv
 requests
 beautifulsoup4
 requests-ratelimiter
-schedule
-textual>=0.47.0
+textual>=8.0

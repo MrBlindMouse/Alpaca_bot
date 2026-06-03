@@ -22,7 +22,7 @@ def main():
     if not config.log_file:
         config.log_file = "alpaca_bot.log"
     setup_logging(config, console=False, default_log_file=config.log_file)
-    AlpacaApp().run()
+    AlpacaApp(config=config).run()
 
 
 if __name__ == "__main__":

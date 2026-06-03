@@ -14,7 +14,9 @@ MARGIN_LINE = re.compile(r"^MARGIN\s*=.*$", re.MULTILINE)
 
 def read_margin(path: str = ENV_PATH) -> float:
     raw = dotenv_values(path)
-    return float(raw["MARGIN"])
+    margin = float(raw["MARGIN"])
+    validate_margin(margin)
+    return margin
 
 
 def validate_margin(value: float) -> None:

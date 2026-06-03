@@ -160,7 +160,10 @@ def load_trades(
                 line = line.strip()
                 if not line:
                     continue
-                row = json.loads(line)
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
                 if cutoff is not None:
                     ts = _parse_ts(row.get("ts", ""))
                     if ts is None or ts < cutoff:

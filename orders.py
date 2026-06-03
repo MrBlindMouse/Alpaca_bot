@@ -240,6 +240,21 @@ def create_order(
                 json_response = final_resp.json()
 
         final = json_response.get("status", "")
+        if final in ("open", "accepted", "pending_new", "new"):
+            delete_url = f"{config.urlBase}markets/v2/orders/{order_id}"
+            cancel_resp = session.delete(delete_url, headers=headers)
+            if str(cancel_resp.status_code) == "204":
+                logger.warning(
+                    "Cancelled market order %s for %s after poll timeout", order_id, symbol
+                )
+                final = "canceled"
+            else:
+                logger.error(
+                    "Failed to cancel market order %s after timeout: %s",
+                    order_id,
+                    cancel_resp.status_code,
+                )
+
         if final == "filled":
             filled_qty, filled_avg = _filled_from_response(json_response)
             _log_trade(

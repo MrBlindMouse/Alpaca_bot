@@ -1,9 +1,8 @@
 import time
 from unittest.mock import patch
 
-import schedule
-
 from config import Config
+from market import ClockSnapshot
 from runner import BotRunner
 from state import Status
 
@@ -20,6 +19,10 @@ def test_runner_start_stop(mock_env, mock_bot_loop):
     config = Config()
     config.update()
     account = Status()
+    mock_bot_loop.return_value = (
+        True,
+        ClockSnapshot(server_epoch=0, is_open=False, next_open_epoch=None, next_close_epoch=None),
+    )
 
     with patch.object(account, "load_state"):
         runner = BotRunner(config, account)
@@ -28,5 +31,3 @@ def test_runner_start_stop(mock_env, mock_bot_loop):
         time.sleep(0.3)
         runner.stop()
         assert not runner.running
-
-    schedule.clear()

@@ -6,4 +6,9 @@ test.py
 test2.py
 trading_state.json
 trades.jsonl
+backtest_trades.jsonl
+backtest_equity.csv
+backtest_comparison.csv
+data/
 *.log
+*.log.*

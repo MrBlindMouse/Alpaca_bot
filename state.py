@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import time
 from typing import Optional
 
 import remote
@@ -131,21 +130,23 @@ class Status:
             if self.tickers:
                 logger.warning("Keeping previous ticker list (%d tickers)", len(self.tickers))
             else:
-                time.sleep(5 * 60)
+                logger.warning("Ticker list empty; will retry on next tick")
 
     def save_state(self, path: Optional[str] = None):
         target = path or self.STATE_FILE
-        with open(target, "w", encoding="utf-8") as file:
-            json.dump(
-                {
-                    "tickers": self.tickers,
-                    "equity": self.equity,
-                    "market": self.market,
-                    "serverTime": self.serverTime,
-                    "margin": self.margin,
-                },
-                file,
-            )
+        payload = {
+            "tickers": self.tickers,
+            "equity": self.equity,
+            "market": self.market,
+            "serverTime": self.serverTime,
+            "margin": self.margin,
+        }
+        directory = os.path.dirname(target) or "."
+        os.makedirs(directory, exist_ok=True)
+        tmp_path = f"{target}.tmp"
+        with open(tmp_path, "w", encoding="utf-8") as file:
+            json.dump(payload, file)
+        os.replace(tmp_path, target)
 
     def load_state(self):
         if os.path.exists(self.STATE_FILE):

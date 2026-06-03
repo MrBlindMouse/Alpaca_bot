@@ -21,6 +21,7 @@ from tui.widgets import (
     format_trade_ts,
     tail_log_rich_lines,
     trade_row_cells,
+    use_ascii_charts,
 )
 from analytics import TickerStats
 
@@ -74,6 +75,19 @@ def test_format_activity_chart():
     assert "NVDA" in chart
     assert "█" in chart
     assert "12" in chart
+
+
+def test_format_activity_chart_ascii():
+    chart = format_activity_chart([("NVDA", 12)], ascii_bars=True)
+    assert "#" in chart
+    assert "█" not in chart
+
+
+def test_use_ascii_charts_env(monkeypatch):
+    monkeypatch.setenv("ALPACA_TUI_ASCII", "1")
+    assert use_ascii_charts() is True
+    monkeypatch.delenv("ALPACA_TUI_ASCII")
+    assert use_ascii_charts() is False
 
 
 def test_format_pl_rich_positive():
@@ -138,7 +152,7 @@ def test_reset_log_tail():
     assert reset.byte_offset == 0
 
 
-def test_tab_keys_logs_before_settings():
+def test_tab_keys_logs_backtest_settings():
     import asyncio
 
     pytest.importorskip("textual")
@@ -152,6 +166,11 @@ def test_tab_keys_logs_before_settings():
             pilot.app.action_tab_logs()
             await pilot.pause()
             assert pilot.app.query_one(TabbedContent).active == "tab_logs"
+            pilot.app.action_tab_backtest()
+            await pilot.pause()
+            assert pilot.app.query_one(TabbedContent).active == "tab_backtest"
+            pilot.app.query_one("#backtest_compare_table")
+            pilot.app.query_one("#bt_dataset")
             pilot.app.action_tab_settings()
             await pilot.pause()
             assert pilot.app.query_one(TabbedContent).active == "tab_settings"

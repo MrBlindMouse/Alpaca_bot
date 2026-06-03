@@ -15,7 +15,7 @@ Personal saving and investment bot that rebalances a portfolio of NASDAQ-100–d
 ## Requirements
 
 - Python 3.9+
-- Dependencies in `requirements.txt`: python-dotenv, requests, beautifulsoup4, requests-ratelimiter, schedule, textual
+- Dependencies in `requirements.txt`: python-dotenv, requests, beautifulsoup4, requests-ratelimiter, textual
 
 ## Setup
 
@@ -57,7 +57,7 @@ python -m tui
 
 Bot logs go to `alpaca_bot.log` when using the TUI (console logging is disabled so the UI stays readable). Set `LOG_FILE` in `.env` to customize.
 
-Scheduled jobs: every 1 minute (main bot loop), every 1 hour (balance check), and daily at 22:00 (day-end recording when remote logging is enabled).
+Scheduler: adaptive bot tick (60s when open/extended, up to 30m when closed), hourly balance check, day-end at 22:00 America/New_York when remote logging is enabled.
 
 | Key | Action |
 |-----|--------|
@@ -68,12 +68,15 @@ Scheduled jobs: every 1 minute (main bot loop), every 1 hour (balance check), an
 | `2` | Positions |
 | `3` | Trades |
 | `4` | Analytics |
-| `5` | Logs |
-| `6` | Settings |
+| `5` / `6` | Logs |
+| `7` | Backtest |
+| `8` | Settings |
 
-Use the **tab bar** or footer keys `1`–`6` to switch views. The status bar also shows the active view name.
+Use the **tab bar** or footer keys `1`–`5`, `7`, and `8` to switch views. The status bar also shows the active view name.
 
-**Status bar:** **Bot tick** is the last scheduler rebalance (~1 min while running). **UI updated** (on the Dashboard) is when the TUI last read local state/logs (~every 2 s).
+**Status bar:** **Bot tick** is the last scheduler loop completion (about every 1 min when the market is open/extended, less often when closed). **UI updated** (on the Dashboard) is when the TUI last read local state/logs (every 2 s while the bot runs or on Logs/Backtest; otherwise about every 5 s for the active tab only).
+
+**SSH / tmux:** Use UTF-8 (`export LANG=en_US.UTF-8`, start tmux with `tmux -u`). If bar charts or borders look wrong, run `ALPACA_TUI_ASCII=1 python -m tui` for ASCII activity bars.
 
 On the **Logs** tab, new lines are appended without clearing the viewer (scroll position is preserved). Press `r` to reload the full log window.
 
@@ -166,6 +169,26 @@ Summary **Avg Net $** is the per-ticker rebalance target: `equity ÷ (ticker_cou
 Use period **All** for a full trading P/L picture; shorter windows only include rebalance fills logged in that range.
 
 Click a **column header** to sort (click again to reverse).
+
+## Backtest
+
+Historical simulation via Alpaca bars (5Min, IEX, split-adjusted), cached in SQLite. Steps every **5 minutes** during regular US hours (live bot ticks every 1 minute).
+
+```bash
+python -m backtest fetch --start 2025-01-01 --end 2025-12-31
+python -m backtest status
+python -m backtest run --start 2025-01-01 --end 2025-12-31 --cash 100000 --margins 0.03,0.05,0.10
+```
+
+**Run comparison** (CLI or TUI tab `7`) runs three strategy families on the same range and cached bars:
+
+| Strategy | Description |
+|----------|-------------|
+| Equal-wt B&H | Invest `cash / N` in each symbol at the first RTH bar, hold |
+| Cap-wt B&H (static NDX wt) | Invest `cash × weight` using current SlickCharts index weights (`data/backtest_weights.json`) — not historical point-in-time weights |
+| Rebalancer | Full `rebalance_tick` loop, once per margin in `BACKTEST_MARGINS` or the margins field |
+
+Outputs: `backtest_comparison.csv`, `backtest_equity.csv` / `backtest_trades.jsonl` for the primary margin (detail tables in the TUI). Fetch/run **Python logs** go to `backtest.log` (`BACKTEST_LOG_FILE`), not `alpaca_bot.log`, so live bot logs stay clean when using the TUI. See `.env.example` for `BACKTEST_*` settings. First `fetch` needs network and market-data access on your Alpaca account; `run` uses the cache only.
 
 ## Testing
 

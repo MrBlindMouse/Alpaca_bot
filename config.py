@@ -5,7 +5,10 @@ from typing import Optional
 
 from dotenv import dotenv_values
 
+from env_config import validate_margin
+
 REQUIRED_KEYS = ("VERSION", "MARGIN")
+ALLOWED_VERSIONS = frozenset({"PAPER", "LIVE"})
 PAPER_KEYS = ("PAPER_KEY", "PAPER_SECRET")
 LIVE_KEYS = ("API_KEY", "API_SECRET")
 
@@ -39,7 +42,7 @@ class Config:
         raw = dotenv_values(".env")
         self._validate(raw)
 
-        version = raw["VERSION"]
+        version = raw["VERSION"].strip()
         self.paper = version == "PAPER"
         self.title = "Alpaca Test" if self.paper else "Alpaca"
         self.urlBase = (
@@ -83,21 +86,26 @@ class Config:
 
     @staticmethod
     def _validate(raw: dict):
-        missing = [k for k in REQUIRED_KEYS if not raw.get(k)]
+        missing = [k for k in REQUIRED_KEYS if not (raw.get(k) or "").strip()]
         if missing:
             raise ValueError(f"Missing required .env keys: {', '.join(missing)}")
 
-        if raw.get("VERSION") == "PAPER":
-            missing = [k for k in PAPER_KEYS if not raw.get(k)]
+        version = (raw.get("VERSION") or "").strip()
+        if version not in ALLOWED_VERSIONS:
+            raise ValueError(f"VERSION must be one of {sorted(ALLOWED_VERSIONS)} (got {version!r})")
+
+        if version == "PAPER":
+            missing = [k for k in PAPER_KEYS if not (raw.get(k) or "").strip()]
         else:
-            missing = [k for k in LIVE_KEYS if not raw.get(k)]
+            missing = [k for k in LIVE_KEYS if not (raw.get(k) or "").strip()]
         if missing:
             raise ValueError(f"Missing required .env keys: {', '.join(missing)}")
 
         try:
-            float(raw["MARGIN"])
+            margin = float(raw["MARGIN"])
         except (TypeError, ValueError) as exc:
             raise ValueError("MARGIN must be a number") from exc
+        validate_margin(margin)
 
 
 def setup_logging(

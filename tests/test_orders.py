@@ -53,6 +53,49 @@ def test_market_order_poll_failure_not_filled():
     assert not result.is_filled
 
 
+def test_market_order_timeout_cancels_still_open():
+    config = MagicMock()
+    config.urlBase = "https://paper-api.alpaca."
+    config.apiKey = "k"
+    config.apiSecret = "s"
+    config.paper = True
+    config.dry_run = False
+    config.slippage_guard_enabled = False
+
+    post_resp = MagicMock()
+    post_resp.status_code = 200
+    post_resp.json.return_value = {"id": "order-1", "status": "open"}
+
+    poll_open = MagicMock()
+    poll_open.status_code = 200
+    poll_open.json.return_value = {"status": "open"}
+
+    cancel_resp = MagicMock()
+    cancel_resp.status_code = 204
+
+    session = MagicMock()
+    session.post.return_value = post_resp
+    session.get.return_value = poll_open
+    session.delete.return_value = cancel_resp
+
+    with patch("orders.append_trade"), patch("orders.time.sleep"), patch("orders.time.time") as mock_time:
+        mock_time.side_effect = [0, 0, 61, 61, 61]
+        result = create_order(
+            session,
+            config,
+            100.0,
+            "buy",
+            "AAPL",
+            intent="rebalance_buy",
+            market_status="open",
+            current_price=150.0,
+        )
+
+    session.delete.assert_called_once()
+    assert result.is_failed
+    assert not result.is_filled
+
+
 def test_dry_run_skips_post():
     config = MagicMock()
     config.urlBase = "https://paper-api.alpaca."

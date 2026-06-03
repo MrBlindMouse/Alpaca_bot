@@ -41,6 +41,32 @@ def _symbols_from_rows(rows) -> list:
     return symbols
 
 
+def _weight_from_cell(text: str) -> float | None:
+    raw = text.strip().replace("%", "")
+    if not raw:
+        return None
+    try:
+        return float(raw) / 100.0
+    except ValueError:
+        return None
+
+
+def _weights_from_rows(rows) -> Dict[str, float]:
+    """Parse symbol -> index weight fraction from SlickCharts table rows."""
+    weights: Dict[str, float] = {}
+    for line in rows:
+        cells = line.find_all("td")
+        if len(cells) < 4:
+            continue
+        symbol = cells[2].get_text(strip=True)
+        if not (symbol.isalpha() and 1 <= len(symbol) <= 5):
+            continue
+        weight = _weight_from_cell(cells[3].get_text())
+        if weight is not None and weight > 0:
+            weights[symbol] = weight
+    return weights
+
+
 def _parse_slickcharts_html(html: bytes) -> list:
     """Extract ticker symbols from SlickCharts NASDAQ-100 HTML."""
     parsed = BeautifulSoup(html, "html.parser")
@@ -54,6 +80,38 @@ def _parse_slickcharts_html(html: bytes) -> list:
         if len(symbols) > len(best):
             best = symbols
     return best if len(best) >= 50 else best
+
+
+def scrape_index_weights() -> Dict[str, float] | None:
+    """Fetch current NASDAQ-100 index weights from SlickCharts (fractions summing ~1)."""
+    try:
+        result = requests.get(SLICKCHARTS_URL, headers=SLICKCHARTS_HEADERS, timeout=30)
+    except requests.RequestException as exc:
+        logger.error("SlickCharts weight scrape failed: %s", exc)
+        return None
+
+    if str(result.status_code) != "200":
+        logger.error("SlickCharts weight scrape HTTP %s", result.status_code)
+        return None
+
+    parsed = BeautifulSoup(result.content, "html.parser")
+    table_body = parsed.find("tbody", id="companyListComponent")
+    rows = table_body.find_all("tr") if table_body is not None else []
+    weights = _weights_from_rows(rows)
+    if not weights:
+        best: Dict[str, float] = {}
+        for tbody in parsed.find_all("tbody"):
+            candidate = _weights_from_rows(tbody.find_all("tr"))
+            if len(candidate) > len(best):
+                best = candidate
+        weights = best
+
+    if not weights:
+        return None
+    total = sum(weights.values())
+    if total <= 0:
+        return None
+    return {sym: w / total for sym, w in weights.items()}
 
 
 def _load_ticker_cache() -> Dict[str, float]:
