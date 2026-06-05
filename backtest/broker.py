@@ -62,6 +62,30 @@ class SimBroker:
         )
         append_trade(record, path=self.trades_path)
 
+    def _log_failure(
+        self,
+        *,
+        symbol: str,
+        side: str,
+        intent: str,
+        market_session: str,
+        notional: float,
+        error: str,
+    ) -> None:
+        record = build_trade_record(
+            symbol=symbol,
+            side=side,
+            intent=intent,
+            order_type="market",
+            market_session=market_session,
+            status="failed",
+            paper=self.config.paper,
+            order_id="backtest",
+            notional=notional,
+            error=error,
+        )
+        append_trade(record, path=self.trades_path)
+
     def place_market_notional(
         self,
         symbol: str,
@@ -74,7 +98,16 @@ class SimBroker:
     ) -> OrderResult:
         notional = trunc(float(notional), 2)
         if notional <= 0 or price <= 0:
-            return OrderResult(status="failed", error="invalid notional or price")
+            error = "invalid notional or price"
+            self._log_failure(
+                symbol=symbol,
+                side=side,
+                intent=intent,
+                market_session=market_session,
+                notional=notional,
+                error=error,
+            )
+            return OrderResult(status="failed", error=error)
 
         qty = _truncate_qty(notional / price)
         if side == "buy":
@@ -82,7 +115,16 @@ class SimBroker:
                 notional = trunc(self.cash, 2)
                 qty = _truncate_qty(notional / price)
                 if notional <= 0 or qty <= 0:
-                    return OrderResult(status="failed", error="insufficient cash")
+                    error = "insufficient cash"
+                    self._log_failure(
+                        symbol=symbol,
+                        side=side,
+                        intent=intent,
+                        market_session=market_session,
+                        notional=notional,
+                        error=error,
+                    )
+                    return OrderResult(status="failed", error=error)
             self.cash -= notional
             self.positions[symbol] = self.positions.get(symbol, 0.0) + qty
         elif side == "sell":
@@ -91,13 +133,31 @@ class SimBroker:
                 qty = _truncate_qty(held)
                 notional = trunc(qty * price, 2)
             if qty <= 0:
-                return OrderResult(status="failed", error="no shares to sell")
+                error = "no shares to sell"
+                self._log_failure(
+                    symbol=symbol,
+                    side=side,
+                    intent=intent,
+                    market_session=market_session,
+                    notional=notional,
+                    error=error,
+                )
+                return OrderResult(status="failed", error=error)
             self.positions[symbol] = held - qty
             if self.positions[symbol] < 1e-12:
                 del self.positions[symbol]
             self.cash += notional
         else:
-            return OrderResult(status="failed", error=f"unknown side {side}")
+            error = f"unknown side {side}"
+            self._log_failure(
+                symbol=symbol,
+                side=side,
+                intent=intent,
+                market_session=market_session,
+                notional=notional,
+                error=error,
+            )
+            return OrderResult(status="failed", error=error)
 
         self._log_fill(
             symbol=symbol,

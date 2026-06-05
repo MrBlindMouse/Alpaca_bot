@@ -1,5 +1,7 @@
 import datetime
+import json
 import logging
+import os
 import time
 from typing import Any, Callable, Optional
 
@@ -7,6 +9,7 @@ import remote
 from alpaca_client import alpaca_headers, get_account, get_balances
 from live_broker import LiveBroker
 from orders import log_limit_status
+from trade_log import DEFAULT_TRADE_FILE
 from utils import trunc
 
 logger = logging.getLogger("alpaca_bot.rebalance")
@@ -14,6 +17,11 @@ logger = logging.getLogger("alpaca_bot.rebalance")
 LIMIT_ORDER_MAX_AGE_SECONDS = 300
 _LIMIT_TERMINAL = frozenset({"filled", "canceled", "expired", "rejected"})
 _LIMIT_CANCELABLE = frozenset({"new", "accepted", "pending_new"})
+_INITIAL_SWING_PCT = 100.0
+
+
+def _swing_pct(diff: float) -> float:
+    return trunc(float(diff) * 100, 1)
 
 
 def _limit_meta(ticker):
@@ -22,6 +30,7 @@ def _limit_meta(ticker):
         "side": lt.get("side", "buy"),
         "intent": lt.get("intent", "rebalance"),
         "notional": lt.get("notional"),
+        "swing_pct": lt.get("swing_pct"),
     }
 
 
@@ -46,7 +55,65 @@ def _empty_limit_trade(server_time: int) -> dict:
         "side": "",
         "intent": "",
         "notional": None,
+        "swing_pct": None,
     }
+
+
+def _log_skip(symbol: str, intent: str, reason: str, diff: Optional[float]) -> None:
+    intent_label = intent or "-"
+    if diff is None:
+        logger.debug("Skip %s %s reason=%s swing=-", symbol, intent_label, reason)
+        return
+    logger.debug(
+        "Skip %s %s reason=%s swing=%.1f%%",
+        symbol,
+        intent_label,
+        reason,
+        _swing_pct(diff),
+    )
+
+
+def _intent_from_limit_placed(
+    order_id: str,
+    trades_path: Optional[str] = None,
+) -> Optional[str]:
+    path = trades_path or DEFAULT_TRADE_FILE
+    if not order_id or not os.path.exists(path):
+        return None
+    intent = None
+    with open(path, encoding="utf-8") as file:
+        for line in file:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if row.get("order_id") == order_id and row.get("status") == "limit_placed":
+                intent = row.get("intent")
+    return intent
+
+
+def _log_limit_terminal(intent: str, symbol: str, swing_pct: Optional[float], order_id: str, status: str) -> None:
+    swing_label = f"{swing_pct:.1f}" if swing_pct is not None else "-"
+    if status == "filled":
+        logger.info(
+            "Limit filled %s %s swing=%s%% id=%s",
+            intent,
+            symbol,
+            swing_label,
+            order_id,
+        )
+    else:
+        logger.info(
+            "Limit %s %s %s swing=%s%% id=%s",
+            status,
+            intent,
+            symbol,
+            swing_label,
+            order_id,
+        )
 
 
 def _sync_volume_from_broker(session, config, account, key, ticker) -> None:
@@ -63,11 +130,13 @@ def _handle_limit_update(session, config, account, key, ticker, json_result):
     side = meta.get("side", "buy")
     intent = meta.get("intent", "rebalance")
     notional = meta.get("notional")
+    swing_pct = meta.get("swing_pct")
     limit_price = float(json_result.get("limit_price") or 0) or None
     filled_qty = json_result.get("filled_qty")
     filled_avg = json_result.get("filled_avg_price")
     fq = float(filled_qty) if filled_qty not in (None, "", "0") else None
     fap = float(filled_avg) if filled_avg not in (None, "", "0") else None
+    alpaca_status = json_result["status"]
 
     log_limit_status(
         config,
@@ -76,12 +145,14 @@ def _handle_limit_update(session, config, account, key, ticker, json_result):
         intent=intent,
         market_session=account.market,
         order_id=order_id,
-        alpaca_status=json_result["status"],
+        alpaca_status=alpaca_status,
         notional=notional,
         limit_price=limit_price,
         filled_qty=fq,
         filled_avg_price=fap,
     )
+    if alpaca_status in ("filled", "canceled", "expired"):
+        _log_limit_terminal(intent, ticker["ticker"], swing_pct, order_id, alpaca_status)
     account.tickers[key]["limitTrade"] = _empty_limit_trade(account.serverTime)
     _sync_volume_from_broker(session, config, account, key, ticker)
 
@@ -94,17 +165,31 @@ def _apply_order_result(
     balance_value,
     intent: str,
     *,
+    swing_pct: float,
     broker,
 ):
     symbol = ticker["ticker"]
     if result.is_filled:
-        logger.info("Filled %s $%s of %s", intent, balance_value, symbol)
+        logger.info(
+            "Filled %s %s $%s swing=%.1f%%",
+            intent,
+            symbol,
+            balance_value,
+            swing_pct,
+        )
         if isinstance(broker, LiveBroker):
             _sync_volume_from_broker(broker.session, broker.config, account, key, ticker)
         else:
             account.tickers[key]["volume"] = broker.get_qty(symbol)
     elif result.is_failed:
-        logger.warning("Failed %s $%s of %s: %s", intent, balance_value, symbol, result.error)
+        logger.warning(
+            "Failed %s %s $%s swing=%.1f%%: %s",
+            intent,
+            symbol,
+            balance_value,
+            swing_pct,
+            result.error,
+        )
     elif result.is_limit_placed:
         if not isinstance(broker, LiveBroker):
             logger.warning(
@@ -112,10 +197,11 @@ def _apply_order_result(
             )
             return
         logger.info(
-            "Limit order placed %s $%s of %s id=%s",
+            "Limit placed %s %s $%s swing=%.1f%% id=%s",
             intent,
-            balance_value,
             symbol,
+            balance_value,
+            swing_pct,
             result.order_id,
         )
         account.tickers[key]["limitTrade"] = {
@@ -125,6 +211,7 @@ def _apply_order_result(
             "side": _limit_side_from_intent(intent),
             "intent": intent,
             "notional": balance_value,
+            "swing_pct": swing_pct,
         }
 
 
@@ -208,13 +295,19 @@ def rebalance_tick(
                 trigger_threshold=float(account.margin),
                 notional=0.0,
             )
+            _log_skip(sym, "", "price_missing_or_zero", None)
             continue
 
         balance_value = base_balance
         previous_diff = float(ticker.get("difference", 0.0))
 
         if ticker["volume"] == 0 and not ticker["limitTrade"]["open"]:
-            logger.info("Buying initial %s", sym)
+            logger.info(
+                "Attempt rebalance_initial %s $%s swing=%.1f%%",
+                sym,
+                balance_value,
+                _INITIAL_SWING_PCT,
+            )
             tick_stats["attempts"] += 1
             _emit_diagnostic(
                 diagnostics,
@@ -247,7 +340,8 @@ def rebalance_tick(
                 ticker,
                 order_result,
                 balance_value,
-                "initial buy",
+                "rebalance_initial",
+                swing_pct=_INITIAL_SWING_PCT,
                 broker=broker,
             )
             if order_result.is_filled:
@@ -315,6 +409,7 @@ def rebalance_tick(
                         trigger_threshold=float(account.margin),
                         notional=0.0,
                     )
+                    _log_skip(sym, "rebalance_sell", "below_margin", diff)
                 elif diff > ticker["difference"]:
                     account.tickers[key]["difference"] = diff
                     _record_skip("tracking_peak_diff")
@@ -336,13 +431,21 @@ def rebalance_tick(
                         trigger_threshold=float(account.margin),
                         notional=0.0,
                     )
+                    _log_skip(sym, "rebalance_sell", "tracking_peak_diff", diff)
                 elif (
                     diff
                     < (ticker["difference"] * (1 - ((ticker["difference"] + account.margin) / 2)))
                     and diff > account.margin
                 ):
                     sell_value = current_value - balance_value
+                    sell_swing = _swing_pct(diff)
                     tick_stats["attempts"] += 1
+                    logger.info(
+                        "Attempt rebalance_sell %s $%s swing=%.1f%%",
+                        sym,
+                        sell_value,
+                        sell_swing,
+                    )
                     _emit_diagnostic(
                         diagnostics,
                         "rebalance_sell_attempt",
@@ -378,12 +481,54 @@ def rebalance_tick(
                         order_result,
                         sell_value,
                         "rebalance_sell",
+                        swing_pct=sell_swing,
                         broker=broker,
                     )
                     if order_result.is_filled:
                         tick_stats["fills"] += 1
+                        _emit_diagnostic(
+                            diagnostics,
+                            "rebalance_sell_filled",
+                            ts=ts_iso,
+                            symbol=sym,
+                            side="sell",
+                            intent="rebalance_sell",
+                            price=float(ticker["price"]),
+                            volume=float(ticker["volume"]),
+                            current_value=current_value,
+                            target_value=balance_value,
+                            diff=diff,
+                            previous_diff=previous_diff,
+                            margin=float(account.margin),
+                            trigger_threshold=float(
+                                ticker["difference"]
+                                * (1 - ((ticker["difference"] + account.margin) / 2))
+                            ),
+                            notional=sell_value,
+                        )
                     elif order_result.is_failed:
                         tick_stats["failures"] += 1
+                        _emit_diagnostic(
+                            diagnostics,
+                            "rebalance_sell_failed",
+                            ts=ts_iso,
+                            symbol=sym,
+                            side="sell",
+                            intent="rebalance_sell",
+                            price=float(ticker["price"]),
+                            volume=float(ticker["volume"]),
+                            current_value=current_value,
+                            target_value=balance_value,
+                            diff=diff,
+                            previous_diff=previous_diff,
+                            margin=float(account.margin),
+                            trigger_threshold=float(
+                                ticker["difference"]
+                                * (1 - ((ticker["difference"] + account.margin) / 2))
+                            ),
+                            notional=sell_value,
+                            error=order_result.error or "",
+                        )
                 else:
                     _record_skip("hysteresis_not_retraced")
                     _emit_diagnostic(
@@ -407,6 +552,7 @@ def rebalance_tick(
                         ),
                         notional=0.0,
                     )
+                    _log_skip(sym, "rebalance_sell", "hysteresis_not_retraced", diff)
             elif current_value < balance_value:
                 diff = (balance_value - current_value) / balance_value
                 if diff < account.margin:
@@ -430,6 +576,7 @@ def rebalance_tick(
                         trigger_threshold=float(account.margin),
                         notional=0.0,
                     )
+                    _log_skip(sym, "rebalance_buy", "below_margin", diff)
                 elif diff > ticker["difference"]:
                     account.tickers[key]["difference"] = diff
                     _record_skip("tracking_peak_diff")
@@ -451,13 +598,21 @@ def rebalance_tick(
                         trigger_threshold=float(account.margin),
                         notional=0.0,
                     )
+                    _log_skip(sym, "rebalance_buy", "tracking_peak_diff", diff)
                 elif (
                     diff
                     < (ticker["difference"] * (1 - ((ticker["difference"] + account.margin) / 2)))
                     and diff > account.margin
                 ):
                     buy_value = balance_value - current_value
+                    buy_swing = _swing_pct(diff)
                     tick_stats["attempts"] += 1
+                    logger.info(
+                        "Attempt rebalance_buy %s $%s swing=%.1f%%",
+                        sym,
+                        buy_value,
+                        buy_swing,
+                    )
                     _emit_diagnostic(
                         diagnostics,
                         "rebalance_buy_attempt",
@@ -493,12 +648,54 @@ def rebalance_tick(
                         order_result,
                         buy_value,
                         "rebalance_buy",
+                        swing_pct=buy_swing,
                         broker=broker,
                     )
                     if order_result.is_filled:
                         tick_stats["fills"] += 1
+                        _emit_diagnostic(
+                            diagnostics,
+                            "rebalance_buy_filled",
+                            ts=ts_iso,
+                            symbol=sym,
+                            side="buy",
+                            intent="rebalance_buy",
+                            price=float(ticker["price"]),
+                            volume=float(ticker["volume"]),
+                            current_value=current_value,
+                            target_value=balance_value,
+                            diff=diff,
+                            previous_diff=previous_diff,
+                            margin=float(account.margin),
+                            trigger_threshold=float(
+                                ticker["difference"]
+                                * (1 - ((ticker["difference"] + account.margin) / 2))
+                            ),
+                            notional=buy_value,
+                        )
                     elif order_result.is_failed:
                         tick_stats["failures"] += 1
+                        _emit_diagnostic(
+                            diagnostics,
+                            "rebalance_buy_failed",
+                            ts=ts_iso,
+                            symbol=sym,
+                            side="buy",
+                            intent="rebalance_buy",
+                            price=float(ticker["price"]),
+                            volume=float(ticker["volume"]),
+                            current_value=current_value,
+                            target_value=balance_value,
+                            diff=diff,
+                            previous_diff=previous_diff,
+                            margin=float(account.margin),
+                            trigger_threshold=float(
+                                ticker["difference"]
+                                * (1 - ((ticker["difference"] + account.margin) / 2))
+                            ),
+                            notional=buy_value,
+                            error=order_result.error or "",
+                        )
                 else:
                     _record_skip("hysteresis_not_retraced")
                     _emit_diagnostic(
@@ -522,10 +719,12 @@ def rebalance_tick(
                         ),
                         notional=0.0,
                     )
+                    _log_skip(sym, "rebalance_buy", "hysteresis_not_retraced", diff)
             else:
                 account.tickers[key]["difference"] = 0
         else:
             _record_skip("limit_trade_open")
+            limit_diff = float(ticker.get("difference", 0.0))
             _emit_diagnostic(
                 diagnostics,
                 "rebalance_order_skipped",
@@ -538,12 +737,13 @@ def rebalance_tick(
                 volume=float(ticker["volume"]),
                 current_value=float(ticker["volume"]) * float(ticker.get("price") or 0.0),
                 target_value=balance_value,
-                diff=0.0,
+                diff=limit_diff,
                 previous_diff=previous_diff,
                 margin=float(account.margin),
                 trigger_threshold=float(account.margin),
                 notional=0.0,
             )
+            _log_skip(sym, "", "limit_trade_open", limit_diff)
 
         if ticker["difference"] > high_ticker["diff"]:
             high_ticker["diff"] = ticker["difference"]
@@ -603,15 +803,21 @@ def sync_open_limit_orders(session, account, config) -> None:
             if ticker["ticker"] != sym or ticker["limitTrade"]["open"]:
                 continue
             side = item.get("side", "buy")
+            order_id = item["id"]
+            recovered_intent = _intent_from_limit_placed(order_id)
+            intent = recovered_intent or (
+                "rebalance_buy" if side == "buy" else "rebalance_sell"
+            )
             account.tickers[key]["limitTrade"] = {
                 "open": True,
-                "id": item["id"],
+                "id": order_id,
                 "ts": limit_ts,
                 "side": side,
-                "intent": "rebalance_buy" if side == "buy" else "rebalance_sell",
+                "intent": intent,
                 "notional": None,
+                "swing_pct": None,
             }
-            logger.info("Synced open limit order for %s id=%s", sym, item["id"])
+            logger.info("Synced open limit order for %s id=%s", sym, order_id)
             break
 
 
@@ -634,6 +840,11 @@ def _process_open_limit(session, config, account, key, ticker, headers) -> None:
         return
 
     if status == "partially_filled":
+        logger.debug(
+            "Limit partially filled %s id=%s; syncing volume",
+            ticker["ticker"],
+            ticker["limitTrade"]["id"],
+        )
         _sync_volume_from_broker(session, config, account, key, ticker)
         return
 
@@ -659,16 +870,24 @@ def _process_open_limit(session, config, account, key, ticker, headers) -> None:
         delete_url = f"{config.urlBase}markets/v2/orders/{ticker['limitTrade']['id']}"
         delete_result = session.delete(delete_url, headers=headers)
         if delete_result.status_code == 204:
-            logger.info("Cancelled old limit order for %s", ticker["ticker"])
+            meta = _limit_meta(ticker)
+            order_id = ticker["limitTrade"]["id"]
             log_limit_status(
                 config,
                 symbol=ticker["ticker"],
-                side=_limit_meta(ticker).get("side", "buy"),
-                intent=_limit_meta(ticker).get("intent", "rebalance"),
+                side=meta.get("side", "buy"),
+                intent=meta.get("intent", "rebalance"),
                 market_session=account.market,
-                order_id=ticker["limitTrade"]["id"],
+                order_id=order_id,
                 alpaca_status="canceled",
-                notional=_limit_meta(ticker).get("notional"),
+                notional=meta.get("notional"),
+            )
+            _log_limit_terminal(
+                meta.get("intent", "rebalance"),
+                ticker["ticker"],
+                meta.get("swing_pct"),
+                order_id,
+                "canceled",
             )
             account.tickers[key]["limitTrade"] = _empty_limit_trade(account.serverTime)
             _sync_volume_from_broker(session, config, account, key, ticker)

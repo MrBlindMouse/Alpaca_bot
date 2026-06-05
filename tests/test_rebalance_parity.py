@@ -18,6 +18,7 @@ def _ticker(sym: str, volume: float, price: float, diff: float = 0.05):
             "side": "",
             "intent": "",
             "notional": None,
+            "swing_pct": None,
         },
     }
 

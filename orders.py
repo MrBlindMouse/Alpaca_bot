@@ -144,7 +144,13 @@ def create_order(
         if config.slippage_guard_enabled and current_price > 0:
             slip_err = _check_slippage(session, config, symbol, current_price)
             if slip_err:
-                logger.warning("Slippage guard rejected %s: %s", symbol, slip_err)
+                logger.debug(
+                    "Slippage guard rejected %s %s %s: %s",
+                    intent,
+                    direction,
+                    symbol,
+                    slip_err,
+                )
                 _log_trade(
                     config,
                     symbol=symbol,
@@ -193,7 +199,13 @@ def create_order(
     if market_status == "open":
         if str(response.status_code) != "200":
             err = _sanitize_error(response)
-            logger.error("Order failed for %s: %s", symbol, err)
+            logger.error(
+                "Order failed for %s %s %s: %s",
+                intent,
+                direction,
+                symbol,
+                err,
+            )
             if circuit:
                 circuit.record_failure()
             _log_trade(
@@ -226,7 +238,13 @@ def create_order(
                     time.sleep(1)
             else:
                 err = _sanitize_error(response)
-                logger.error("Order poll failed for %s: %s", symbol, err)
+                logger.error(
+                    "Order poll failed for %s %s %s: %s",
+                    intent,
+                    direction,
+                    symbol,
+                    err,
+                )
                 poll_status = "close"
                 json_response = {"status": "error", "message": err}
                 if circuit:
@@ -244,8 +262,12 @@ def create_order(
             delete_url = f"{config.urlBase}markets/v2/orders/{order_id}"
             cancel_resp = session.delete(delete_url, headers=headers)
             if str(cancel_resp.status_code) == "204":
-                logger.warning(
-                    "Cancelled market order %s for %s after poll timeout", order_id, symbol
+                logger.debug(
+                    "Cancelled market order %s for %s %s %s after poll timeout",
+                    order_id,
+                    intent,
+                    direction,
+                    symbol,
                 )
                 final = "canceled"
             else:
@@ -316,7 +338,13 @@ def create_order(
         return OrderResult(status="limit_placed", order_id=order_id)
 
     err = _sanitize_error(response)
-    logger.error("Limit order failed for %s: %s", symbol, err)
+    logger.error(
+        "Limit order failed for %s %s %s: %s",
+        intent,
+        direction,
+        symbol,
+        err,
+    )
     if circuit:
         circuit.record_failure()
     _log_trade(

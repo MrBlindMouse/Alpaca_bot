@@ -26,6 +26,7 @@ def _empty_limit_trade() -> dict:
         "side": "",
         "intent": "",
         "notional": None,
+        "swing_pct": None,
     }
 
 

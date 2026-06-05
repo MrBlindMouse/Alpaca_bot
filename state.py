@@ -47,7 +47,7 @@ class Status:
                     break
             if not found:
                 symbol = item["symbol"]
-                logger.info("Liquidating %s", symbol)
+                logger.info("Attempt liquidate %s", symbol)
                 close_url = (
                     f"{config.urlBase}markets/v2/positions/{symbol}?percentage=100"
                 )
@@ -55,8 +55,7 @@ class Status:
                     close_url, headers=alpaca_headers(config, json_content=True)
                 )
                 if str(result.status_code) == "200":
-                    status = result.json().get("status", "unknown")
-                    logger.info("Liquidated %s; status=%s", symbol, status)
+                    logger.info("Filled liquidate %s", symbol)
                     append_trade(
                         build_trade_record(
                             symbol=symbol,
@@ -71,7 +70,7 @@ class Status:
                     )
                 else:
                     err = f"{result.status_code} {result.reason}"
-                    logger.error("Liquidation failed for %s: %s", symbol, err)
+                    logger.error("Failed liquidate %s: %s", symbol, err)
                     append_trade(
                         build_trade_record(
                             symbol=symbol,
@@ -112,6 +111,7 @@ class Status:
                         "side": "",
                         "intent": "",
                         "notional": None,
+                        "swing_pct": None,
                     },
                 }
                 if item in old_map:
