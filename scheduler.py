@@ -1,37 +1,13 @@
 import logging
-import sys
-import time
-import traceback
 from typing import Optional, Tuple
 
-import remote
 from config import log_remote_disabled_once
 from market import ClockSnapshot, MarketTracker, check_time
 from rebalance import bot, maintain_open_limits
-from reporting import check_in
 
 logger = logging.getLogger("alpaca_bot.scheduler")
 
 
-def bmd_logger(function):
-    def wrapper(session, account, config, *args, **kwargs):
-        try:
-            return function(session, account, config, *args, **kwargs)
-        except Exception:
-            exc_type, exc_value, exc_traceback = sys.exc_info()
-            tb = traceback.extract_tb(exc_traceback)
-            post_message = f"Exception raised during {function.__name__}<br>"
-            for line in traceback.format_list(tb):
-                post_message += line.replace("\n", "<br>") + "<br>"
-            post_message += f"{exc_type}<br>{exc_value}"
-            logger.exception("Unhandled error in %s", function.__name__)
-            remote.post_log(config, post_message, config.title, "2")
-            raise
-
-    return wrapper
-
-
-@bmd_logger
 def bot_loop(
     session,
     account,
@@ -42,16 +18,30 @@ def bot_loop(
     circuit=None,
 ) -> Tuple[bool, Optional[ClockSnapshot]]:
     del stop_event
+    try:
+        return _bot_loop_body(session, account, config, tracker, circuit=circuit)
+    except Exception:
+        logger.exception("Unhandled error in bot_loop")
+        raise
+
+
+def _bot_loop_body(
+    session,
+    account,
+    config,
+    tracker: MarketTracker,
+    *,
+    circuit=None,
+) -> Tuple[bool, Optional[ClockSnapshot]]:
     config.update()
     log_remote_disabled_once(config, logger)
     account.margin = config.margin
     clock_ok, snapshot = check_time(session, account, config, tracker)
-    if circuit:
-        if clock_ok:
-            circuit.record_success()
-        else:
-            circuit.record_failure()
-            logger.warning("Market clock stale; skipping state persist this tick")
+    # ponytail: clock health is not an order success — only record_failure here so
+    # consecutive API/order failures can open the breaker across ticks.
+    if circuit and not clock_ok:
+        circuit.record_failure()
+        logger.warning("Market clock stale; skipping state persist this tick")
     if account.market in ("open", "extended"):
         maintain_open_limits(session, account, config)
         if circuit and circuit.is_paused():
@@ -60,7 +50,6 @@ def bot_loop(
             bot(session, account, config, circuit=circuit)
     if clock_ok:
         account.save_state()
-    check_in(session, int(time.time()), account, config)
     return clock_ok, snapshot
 
 

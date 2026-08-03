@@ -36,6 +36,7 @@ def test_check_balances_liquidates_only_orphans():
     config.apiKey = "key"
     config.apiSecret = "secret"
     config.paper = True
+    config.dry_run = False
 
     delete_response = MagicMock()
     delete_response.status_code = 200
@@ -57,9 +58,62 @@ def test_check_balances_liquidates_only_orphans():
     assert "ORPHAN" in call_url
 
 
+def test_check_balances_dry_run_skips_liquidate():
+    account = Status()
+    account.tickers = []
+    config = MagicMock()
+    config.urlBase = "https://paper-api.alpaca."
+    config.apiKey = "key"
+    config.apiSecret = "secret"
+    config.paper = True
+    config.dry_run = True
+
+    session = MagicMock()
+    with patch("state.append_trade") as mock_log:
+        account.check_balances(
+            session, [{"symbol": "ORPHAN", "qty": "2"}], config
+        )
+
+    session.delete.assert_not_called()
+    mock_log.assert_called_once()
+
+
+def test_check_balances_zeros_flat_universe_symbol():
+    account = Status()
+    account.tickers = [
+        {
+            "ticker": "AAPL",
+            "volume": 5.0,
+            "difference": 0,
+            "price": 100,
+            "limitTrade": {"open": False, "id": "", "ts": 0, "side": "", "intent": "", "notional": None},
+        },
+        {
+            "ticker": "MSFT",
+            "volume": 2.0,
+            "difference": 0,
+            "price": 200,
+            "limitTrade": {"open": False, "id": "", "ts": 0, "side": "", "intent": "", "notional": None},
+        },
+    ]
+    config = MagicMock()
+    config.dry_run = False
+    config.paper = True
+
+    with patch("state.append_trade"):
+        account.check_balances(
+            session=MagicMock(),
+            positions=[{"symbol": "MSFT", "qty": "2"}],
+            config=config,
+        )
+
+    by_sym = {t["ticker"]: t for t in account.tickers}
+    assert by_sym["AAPL"]["volume"] == 0.0
+    assert by_sym["MSFT"]["volume"] == 2.0
+
+
 @patch("state.find_tickers")
-@patch("state.remote.post_log")
-def test_check_ticker_preserves_existing_fields(mock_post, mock_find):
+def test_check_ticker_preserves_existing_fields(mock_find):
     account = Status()
     account.tickers = [
         {

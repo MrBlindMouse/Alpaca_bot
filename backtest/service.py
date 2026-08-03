@@ -9,7 +9,7 @@ from dataclasses import replace
 from typing import Callable, List, Optional, Tuple
 
 from backtest.compare import StrategyResult, run_comparisons
-from backtest.config import BacktestConfig, load_backtest_config
+from backtest.config import BacktestConfig
 from backtest.cache import BarCache
 from backtest.fetch import fetch_all
 from backtest.logging_setup import backtest_logging_session
@@ -94,17 +94,18 @@ def execute_fetch(
         return fetch_all(cfg, start=start, end=end, force=force, on_progress=on_progress)
 
 
-def _comparison_trade_files(
+def _comparison_artifact_files(
     cfg: BacktestConfig,
     margins: List[float],
     primary: Optional[float],
 ) -> List[str]:
-    paths = [cfg.trades_file]
+    paths = [cfg.trades_file, cfg.decisions_file, cfg.equity_file]
     for margin in margins:
         if primary is not None and margin == primary:
             continue
-        base, ext = os.path.splitext(cfg.trades_file)
-        paths.append(f"{base}_m{margin:g}{ext or '.jsonl'}")
+        for path in (cfg.trades_file, cfg.decisions_file, cfg.equity_file):
+            base, ext = os.path.splitext(path)
+            paths.append(f"{base}_m{margin:g}{ext or ''}")
     return paths
 
 
@@ -120,7 +121,7 @@ def execute_comparisons(
 ) -> List[StrategyResult]:
     primary = primary_margin if primary_margin is not None else (margins[0] if margins else None)
     if reset_trades:
-        for path in _comparison_trade_files(cfg, margins, primary):
+        for path in _comparison_artifact_files(cfg, margins, primary):
             if os.path.exists(path):
                 os.remove(path)
     with backtest_logging_session(cfg, label=f"comparison {start} .. {end}"):
@@ -220,7 +221,3 @@ def summarize_decisions(path: str) -> dict:
                     key_str = str(key)
                     summary["skipped"][key_str] = summary["skipped"].get(key_str, 0) + int(value)
     return summary
-
-
-def default_config() -> BacktestConfig:
-    return load_backtest_config()

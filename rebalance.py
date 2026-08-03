@@ -5,8 +5,7 @@ import os
 import time
 from typing import Any, Callable, Optional
 
-import remote
-from alpaca_client import alpaca_headers, get_account, get_balances
+from alpaca_client import AlpacaAPIError, alpaca_headers, get_account, get_balances
 from live_broker import LiveBroker
 from orders import log_limit_status
 from trade_log import DEFAULT_TRADE_FILE
@@ -14,9 +13,11 @@ from utils import trunc
 
 logger = logging.getLogger("alpaca_bot.rebalance")
 
+# ponytail: this module owns tick + limit maintain + live bot (~1k lines).
+# Extend carefully; split tick / limits / bot only when a feature forces it.
 LIMIT_ORDER_MAX_AGE_SECONDS = 300
 _LIMIT_TERMINAL = frozenset({"filled", "canceled", "expired", "rejected"})
-_LIMIT_CANCELABLE = frozenset({"new", "accepted", "pending_new"})
+_LIMIT_CANCELABLE = frozenset({"new", "accepted", "pending_new", "partially_filled"})
 _INITIAL_SWING_PCT = 100.0
 
 
@@ -32,12 +33,6 @@ def _limit_meta(ticker):
         "notional": lt.get("notional"),
         "swing_pct": lt.get("swing_pct"),
     }
-
-
-def _set_limit_trade_fields(limit_trade: dict, side: str, intent: str, notional):
-    limit_trade["side"] = side
-    limit_trade["intent"] = intent
-    limit_trade["notional"] = notional
 
 
 def _limit_side_from_intent(intent: str) -> str:
@@ -177,6 +172,8 @@ def _apply_order_result(
             balance_value,
             swing_pct,
         )
+        # ponytail: live uses state volume + post-fill sync (not get_qty each symbol);
+        # upgrade: refresh all qtys from Alpaca at start of bot() if drift appears.
         if isinstance(broker, LiveBroker):
             _sync_volume_from_broker(broker.session, broker.config, account, key, ticker)
         else:
@@ -191,6 +188,8 @@ def _apply_order_result(
             result.error,
         )
     elif result.is_limit_placed:
+        # ponytail: limits are live-only; SimBroker never returns limit_placed.
+        # Upgrade: Broker.supports_limits flag if a second limit-capable broker appears.
         if not isinstance(broker, LiveBroker):
             logger.warning(
                 "Limit placed for %s in non-live broker; ignoring", symbol
@@ -786,13 +785,23 @@ def rebalance_tick(
     )
 
 
+def _log_order_api_failure(message: str, *args, status_code: int, reason: str) -> None:
+    """Log order API failures; WARNING for transient 5xx, ERROR otherwise."""
+    log = logger.warning if 500 <= status_code <= 599 else logger.error
+    log(message, *args, status_code, reason)
+
+
 def sync_open_limit_orders(session, account, config) -> None:
     """Reconcile local limitTrade state with Alpaca open orders."""
     headers = alpaca_headers(config, json_content=True)
     orders_url = f"{config.urlBase}markets/v2/orders"
     result = session.get(orders_url, headers=headers)
     if result.status_code != 200:
-        logger.error("Failed to list open orders: %s %s", result.status_code, result.reason)
+        _log_order_api_failure(
+            "Failed to list open orders: %s %s",
+            status_code=result.status_code,
+            reason=result.reason,
+        )
         return
     limit_ts = account.serverTime or int(time.time())
     for item in result.json():
@@ -821,37 +830,7 @@ def sync_open_limit_orders(session, account, config) -> None:
             break
 
 
-def _process_open_limit(session, config, account, key, ticker, headers) -> None:
-    open_url = f"{config.urlBase}markets/v2/orders/{ticker['limitTrade']['id']}"
-    result = session.get(open_url, headers=headers)
-    if result.status_code != 200:
-        logger.error(
-            "Failed to check open order %s: %s %s",
-            ticker["limitTrade"]["id"],
-            result.status_code,
-            result.reason,
-        )
-        return
-
-    json_result = result.json()
-    status = json_result.get("status", "")
-    if status in _LIMIT_TERMINAL:
-        _handle_limit_update(session, config, account, key, ticker, json_result)
-        return
-
-    if status == "partially_filled":
-        logger.debug(
-            "Limit partially filled %s id=%s; syncing volume",
-            ticker["ticker"],
-            ticker["limitTrade"]["id"],
-        )
-        _sync_volume_from_broker(session, config, account, key, ticker)
-        return
-
-    now = account.serverTime or int(time.time())
-    if now - int(ticker["limitTrade"]["ts"]) <= LIMIT_ORDER_MAX_AGE_SECONDS:
-        return
-
+def _cancel_aged_limit(session, config, account, key, ticker, headers, open_url) -> None:
     cancel_result = session.get(open_url, headers=headers)
     if cancel_result.status_code != 200:
         logger.error(
@@ -906,6 +885,50 @@ def _process_open_limit(session, config, account, key, ticker, headers) -> None:
     )
 
 
+def _process_open_limit(session, config, account, key, ticker, headers) -> None:
+    open_url = f"{config.urlBase}markets/v2/orders/{ticker['limitTrade']['id']}"
+    result = session.get(open_url, headers=headers)
+    if result.status_code != 200:
+        if result.status_code == 404:
+            logger.info(
+                "Limit order %s gone (404); clearing local state for %s",
+                ticker["limitTrade"]["id"],
+                ticker["ticker"],
+            )
+            account.tickers[key]["limitTrade"] = _empty_limit_trade(
+                account.serverTime or int(time.time())
+            )
+            _sync_volume_from_broker(session, config, account, key, ticker)
+            return
+        _log_order_api_failure(
+            "Failed to check open order %s: %s %s",
+            ticker["limitTrade"]["id"],
+            status_code=result.status_code,
+            reason=result.reason,
+        )
+        return
+
+    json_result = result.json()
+    status = json_result.get("status", "")
+    if status in _LIMIT_TERMINAL:
+        _handle_limit_update(session, config, account, key, ticker, json_result)
+        return
+
+    if status == "partially_filled":
+        logger.debug(
+            "Limit partially filled %s id=%s; syncing volume",
+            ticker["ticker"],
+            ticker["limitTrade"]["id"],
+        )
+        _sync_volume_from_broker(session, config, account, key, ticker)
+
+    now = account.serverTime or int(time.time())
+    if now - int(ticker["limitTrade"]["ts"]) <= LIMIT_ORDER_MAX_AGE_SECONDS:
+        return
+
+    _cancel_aged_limit(session, config, account, key, ticker, headers, open_url)
+
+
 def maintain_open_limits(session, account, config) -> None:
     """Poll and cancel stale limit orders; runs even when circuit breaker pauses new trades."""
     if account.market in ("closed", "holiday"):
@@ -936,25 +959,112 @@ def _fetch_snapshot_prices(session, config, account, headers) -> dict[str, float
                 account.tickers[key]["price"] = vw
                 prices[sym] = vw
             else:
+                # ponytail: omit missing symbols (tick skips price<=0); do not
+                # rehydrate stale ticker["price"] into the order path.
                 logger.warning("No snapshot data for %s", sym)
-                if ticker.get("price"):
-                    prices[sym] = float(ticker["price"])
     else:
-        remote.post_log(
-            config,
-            f"Error calling new snapshot:<br>{result.text[:500]}",
-            config.title,
-        )
         logger.error(
             "Snapshot error: %s %s",
             result.status_code,
             result.reason,
         )
-        for ticker in account.tickers:
-            sym = ticker["ticker"]
-            if ticker.get("price"):
-                prices[sym] = float(ticker["price"])
+        # Fail closed for this tick: empty prices → no new trades on stale VWAP.
     return prices
+
+
+def force_rebalance_symbol(
+    account,
+    config,
+    *,
+    symbol: str,
+    prices: dict,
+    broker,
+    session: str = "open",
+) -> tuple[bool, str]:
+    """One-shot: trade symbol to equal-$ target, ignoring hysteresis. RTH only."""
+    from analytics import compute_balance_target
+
+    sym = symbol.strip().upper()
+    if not sym:
+        return False, "Symbol required"
+
+    if session != "open":
+        return False, f"Market not open (session={session}); force balance is RTH-only"
+
+    total_pos = len(account.tickers)
+    if total_pos == 0:
+        return False, "No tickers loaded"
+
+    key = None
+    ticker = None
+    for i, row in enumerate(account.tickers):
+        if row["ticker"] == sym:
+            key = i
+            ticker = row
+            break
+    if ticker is None:
+        return False, f"{sym} not in portfolio"
+
+    if ticker.get("limitTrade", {}).get("open"):
+        return False, f"{sym} has an open limit order; cancel or wait before force balance"
+
+    if sym in prices:
+        price = float(prices[sym])
+    else:
+        price = float(ticker.get("price") or 0.0)
+    if price <= 0:
+        return False, f"No price for {sym}"
+
+    ticker["price"] = price
+    account.equity = broker.get_equity(prices)
+    target = compute_balance_target(account.equity, total_pos, float(account.margin))
+    if target is None or target <= 0:
+        return False, "Cannot compute balance target"
+
+    current_value = float(ticker["volume"]) * price
+    gap = current_value - target
+    notional = trunc(abs(gap), 2)
+    if notional <= 0:
+        account.tickers[key]["difference"] = 0.0
+        return True, f"{sym} already balanced"
+
+    side = "sell" if gap > 0 else "buy"
+    intent = "rebalance_force"
+    swing = _swing_pct(abs(gap) / target) if target else 0.0
+    logger.info(
+        "Attempt %s %s %s $%s swing=%.1f%%",
+        intent,
+        side,
+        sym,
+        notional,
+        swing,
+    )
+    result = broker.place_market_notional(
+        sym,
+        side,
+        notional,
+        price,
+        intent=intent,
+        market_session=session,
+    )
+    _apply_order_result(
+        account,
+        key,
+        ticker,
+        result,
+        notional,
+        intent,
+        swing_pct=swing,
+        broker=broker,
+    )
+    if result.is_filled:
+        account.tickers[key]["difference"] = 0.0
+        return True, f"Force {side} {sym} ${notional}"
+    if result.is_failed:
+        return False, result.error or f"Force {side} {sym} failed"
+    if result.is_limit_placed:
+        return False, f"Unexpected limit for {sym} during RTH force balance"
+    return False, f"Force {side} {sym} incomplete"
 
 
 def bot(session, account, config, circuit=None):
@@ -962,7 +1072,13 @@ def bot(session, account, config, circuit=None):
 
     if account.equity == 0:
         logger.info("Loading Alpaca account data")
-        account_data = get_account(session, config)
+        try:
+            account_data = get_account(session, config)
+        except AlpacaAPIError as exc:
+            logger.warning("bot skipped: %s", exc)
+            if circuit:
+                circuit.record_failure()
+            return
         account.equity = float(account_data["equity"])
         logger.info("Updating tickers")
         account.check_ticker(session, config)
@@ -975,7 +1091,13 @@ def bot(session, account, config, circuit=None):
         logger.warning("No tickers loaded; skipping rebalance")
         return
 
-    account_data = get_account(session, config)
+    try:
+        account_data = get_account(session, config)
+    except AlpacaAPIError as exc:
+        logger.warning("bot skipped: %s", exc)
+        if circuit:
+            circuit.record_failure()
+        return
     account.equity = float(account_data["equity"])
     prices = _fetch_snapshot_prices(session, config, account, headers)
     broker = LiveBroker(session, config, account, circuit=circuit)
@@ -987,3 +1109,5 @@ def bot(session, account, config, circuit=None):
         session=account.market,
         log_summary=True,
     )
+    if circuit:
+        circuit.record_success()

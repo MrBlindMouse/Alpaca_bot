@@ -96,6 +96,63 @@ def test_market_order_timeout_cancels_still_open():
     assert not result.is_filled
 
 
+def test_market_order_canceled_with_fills_counts_as_filled():
+    config = MagicMock()
+    config.urlBase = "https://paper-api.alpaca."
+    config.apiKey = "k"
+    config.apiSecret = "s"
+    config.paper = True
+    config.dry_run = False
+    config.slippage_guard_enabled = False
+
+    post_resp = MagicMock()
+    post_resp.status_code = 200
+    post_resp.json.return_value = {"id": "order-1", "status": "open"}
+
+    poll_partial = MagicMock()
+    poll_partial.status_code = 200
+    poll_partial.json.return_value = {
+        "status": "partially_filled",
+        "filled_qty": "0.4",
+        "filled_avg_price": "150",
+    }
+
+    cancel_resp = MagicMock()
+    cancel_resp.status_code = 204
+
+    after_cancel = MagicMock()
+    after_cancel.status_code = 200
+    after_cancel.json.return_value = {
+        "status": "canceled",
+        "filled_qty": "0.4",
+        "filled_avg_price": "150",
+    }
+
+    session = MagicMock()
+    session.post.return_value = post_resp
+    session.get.side_effect = [poll_partial, poll_partial, after_cancel]
+    session.delete.return_value = cancel_resp
+
+    with patch("orders.append_trade"), patch("orders.time.sleep"), patch(
+        "orders.time.time"
+    ) as mock_time:
+        mock_time.side_effect = [0, 0, 61, 61, 61]
+        result = create_order(
+            session,
+            config,
+            100.0,
+            "buy",
+            "AAPL",
+            intent="rebalance_buy",
+            market_status="open",
+            current_price=150.0,
+        )
+
+    assert result.is_filled
+    assert result.filled_qty == 0.4
+    assert result.filled_avg_price == 150.0
+
+
 def test_dry_run_skips_post():
     config = MagicMock()
     config.urlBase = "https://paper-api.alpaca."

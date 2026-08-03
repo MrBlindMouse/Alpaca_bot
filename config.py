@@ -22,7 +22,8 @@ def _parse_bool(value: Optional[str], default: bool = False) -> bool:
 class Config:
     def __init__(self):
         self.remote_logging_enabled = False
-        self.remote_base_url = "https://www.bmd-studios.com"
+        self.remote_base_url = ""
+        self.remote_webhook_secret = ""
         self.log_level = "INFO"
         self.log_file = ""
         self.title = ""
@@ -57,8 +58,8 @@ class Config:
         self.remote_logging_enabled = _parse_bool(
             raw.get("REMOTE_LOGGING_ENABLED"), default=False
         )
-        base = (raw.get("REMOTE_BASE_URL") or "https://www.bmd-studios.com").rstrip("/")
-        self.remote_base_url = base
+        self.remote_base_url = (raw.get("REMOTE_BASE_URL") or "").strip().rstrip("/")
+        self.remote_webhook_secret = (raw.get("REMOTE_WEBHOOK_SECRET") or "").strip()
         self.log_level = (raw.get("LOG_LEVEL") or "INFO").upper()
         self.log_file = (raw.get("LOG_FILE") or "").strip()
 
@@ -139,6 +140,12 @@ def setup_logging(
         )
         file_handler.setFormatter(formatter)
         root.addHandler(file_handler)
+
+    if config.remote_logging_enabled and config.remote_base_url:
+        from remote import WebhookLogHandler
+
+        webhook_handler = WebhookLogHandler(config)
+        root.addHandler(webhook_handler)
 
     return root
 

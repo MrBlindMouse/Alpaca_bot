@@ -3,7 +3,6 @@ import logging
 import os
 from typing import Optional
 
-import remote
 from alpaca_client import alpaca_headers
 from ticker_source import find_tickers, get_cached_valid_tickers
 from trade_log import append_trade, build_trade_record
@@ -36,17 +35,36 @@ class Status:
         self.margin = 0
 
     def check_balances(self, session, positions, config):
-        """Update ticker quantities or liquidate if not found."""
+        """Update ticker quantities or liquidate orphans not in the universe."""
+        held: dict[str, float] = {}
         for item in positions:
+            symbol = item["symbol"]
+            qty = float(item["qty"])
+            held[symbol] = qty
             found = False
             for key, ticker in enumerate(self.tickers):
-                if ticker["ticker"] == item["symbol"]:
+                if ticker["ticker"] == symbol:
                     found = True
-                    if ticker["volume"] != item["qty"]:
-                        self.tickers[key]["volume"] = float(item["qty"])
+                    if float(ticker["volume"]) != qty:
+                        self.tickers[key]["volume"] = qty
                     break
             if not found:
-                symbol = item["symbol"]
+                if getattr(config, "dry_run", False):
+                    logger.info("Dry-run: would liquidate orphan %s", symbol)
+                    append_trade(
+                        build_trade_record(
+                            symbol=symbol,
+                            side="sell",
+                            intent="liquidate",
+                            order_type="market",
+                            market_session=self.market,
+                            status="filled",
+                            paper=config.paper,
+                            order_id="dry-run",
+                            error=None,
+                        )
+                    )
+                    continue
                 logger.info("Attempt liquidate %s", symbol)
                 close_url = (
                     f"{config.urlBase}markets/v2/positions/{symbol}?percentage=100"
@@ -54,7 +72,7 @@ class Status:
                 result = session.delete(
                     close_url, headers=alpaca_headers(config, json_content=True)
                 )
-                if str(result.status_code) == "200":
+                if result.status_code == 200:
                     logger.info("Filled liquidate %s", symbol)
                     append_trade(
                         build_trade_record(
@@ -83,6 +101,11 @@ class Status:
                             error=err,
                         )
                     )
+
+        # Universe symbols flat at the broker must not keep a stale local volume.
+        for key, ticker in enumerate(self.tickers):
+            if ticker["ticker"] not in held and float(ticker.get("volume") or 0) != 0:
+                self.tickers[key]["volume"] = 0.0
 
     def check_ticker(self, session, config):
         """Update equity list for NASDAQ100 changes."""
@@ -124,9 +147,8 @@ class Status:
                 new_list.append(new_ticker)
             self.tickers = new_list
             self.save_state()
-            remote.post_log(config, "Tickers updated", config.title, "1")
+            logger.info("Tickers updated (%d symbols)", len(new_list))
         else:
-            remote.post_log(config, "Tickers not scraped!", config.title, "3")
             if self.tickers:
                 logger.warning("Keeping previous ticker list (%d tickers)", len(self.tickers))
             else:

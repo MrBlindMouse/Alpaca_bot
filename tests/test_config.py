@@ -24,7 +24,8 @@ def test_config_remote_disabled_by_default(mock_env):
     config = Config()
     config.update()
     assert config.remote_logging_enabled is False
-    assert config.remote_base_url == "https://www.bmd-studios.com"
+    assert config.remote_base_url == ""
+    assert config.remote_webhook_secret == ""
     assert config.paper is True
 
 
@@ -36,12 +37,14 @@ def test_config_remote_enabled(mock_env):
         "PAPER_SECRET": "s",
         "MARGIN": "0.05",
         "REMOTE_LOGGING_ENABLED": "true",
-        "REMOTE_BASE_URL": "https://example.com/",
+        "REMOTE_BASE_URL": "https://example.com/hook/",
+        "REMOTE_WEBHOOK_SECRET": "sekrit",
     }
     config = Config()
     config.update()
     assert config.remote_logging_enabled is True
-    assert config.remote_base_url == "https://example.com"
+    assert config.remote_base_url == "https://example.com/hook"
+    assert config.remote_webhook_secret == "sekrit"
 
 
 @patch("config.dotenv_values")

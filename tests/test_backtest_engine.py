@@ -59,3 +59,46 @@ def test_run_backtest_smoke(tmp_path):
     diag = summarize_decisions(bt_cfg.decisions_file)
     assert diag["events"] == len(events)
     assert diag["tick_summaries"] == 2
+
+
+def test_run_backtest_carries_forward_missing_bar_price(tmp_path):
+    db = tmp_path / "bars.sqlite"
+    symbols_file = tmp_path / "symbols.json"
+    save_symbols(["AAPL"], str(symbols_file))
+
+    cache = BarCache(str(db))
+    # First RTH bar only — second timestamp missing from cache.
+    cache.upsert_bars(
+        [
+            ("AAPL", "2025-01-02T14:35:00Z", 100, 101, 99, 100.5, 1000, 100.0),
+        ]
+    )
+    # Inject a second timestamp row for another symbol so the step exists,
+    # then AAPL is missing at that ts and must carry forward.
+    cache.upsert_bars(
+        [
+            ("MSFT", "2025-01-02T14:40:00Z", 200, 201, 199, 200.5, 1000, 200.0),
+        ]
+    )
+    save_symbols(["AAPL", "MSFT"], str(symbols_file))
+    cache.upsert_bars(
+        [
+            ("AAPL", "2025-01-02T14:35:00Z", 100, 101, 99, 100.5, 1000, 100.0),
+            ("MSFT", "2025-01-02T14:35:00Z", 200, 201, 199, 200.5, 1000, 200.0),
+            ("MSFT", "2025-01-02T14:40:00Z", 200, 201, 199, 200.5, 1000, 200.0),
+        ]
+    )
+
+    bt_cfg = BacktestConfig(
+        bar_db=str(db),
+        symbols_file=str(symbols_file),
+        trades_file=str(tmp_path / "trades.jsonl"),
+        equity_file=str(tmp_path / "equity.csv"),
+        decisions_file=str(tmp_path / "decisions.jsonl"),
+        initial_cash=10_000.0,
+    )
+
+    summary = run_backtest(bt_cfg, start="2025-01-02", end="2025-01-02", cash=10_000.0)
+    assert summary["steps"] == 2
+    # Equity must not collapse to cash-only from a $0 AAPL mark.
+    assert summary["end_equity"] > 1000

@@ -29,7 +29,11 @@ def alpaca_headers(config, *, json_content: bool = False) -> dict:
 
 def create_session() -> LimiterSession:
     session = LimiterSession(per_minute=200, burst=10)
-    retry_strategy = Retry(total=3, backoff_factor=1)
+    retry_strategy = Retry(
+        total=3,
+        backoff_factor=1,
+        status_forcelist=[429, 500, 502, 503, 504],
+    )
     adapter = HTTPAdapter(max_retries=retry_strategy)
     session.mount("https://", adapter)
     return session

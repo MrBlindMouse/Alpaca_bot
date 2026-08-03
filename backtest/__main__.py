@@ -26,6 +26,11 @@ def _cmd_fetch(args: argparse.Namespace, bt_cfg: BacktestConfig) -> int:
         f"Done: {result['symbols']} symbols, {result['bars_inserted']} bars inserted, "
         f"cache has {result['bar_count']} bars for {result['symbol_count']} symbols"
     )
+    failed = result.get("failed_symbols") or []
+    if failed:
+        print(f"  Failed symbols ({len(failed)}): {', '.join(failed)}")
+        print(f"  Log: {bt_cfg.log_file}")
+        return 1
     print(f"  Log: {bt_cfg.log_file}")
     return 0
 

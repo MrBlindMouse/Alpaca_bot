@@ -1,4 +1,8 @@
-"""RTH timestamp filtering for backtest steps."""
+"""RTH timestamp filtering for backtest steps.
+
+ponytail: weekend + 09:30–16:00 ET only (no holidays/early closes).
+Upgrade to Alpaca calendar if half-day accuracy matters.
+"""
 
 from __future__ import annotations
 

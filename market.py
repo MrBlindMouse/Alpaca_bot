@@ -4,7 +4,6 @@ import time
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
-import remote
 from alpaca_client import alpaca_headers
 
 logger = logging.getLogger("alpaca_bot.market")
@@ -128,11 +127,10 @@ def _apply_market_state(
                 dt_object.day,
             )
             headers = alpaca_headers(config, json_content=True)
-            start_date = f"start={dt_object.year}-{dt_object.month}-{dt_object.day} 00:00:00"
-            end_date = f"end={dt_object.year}-{dt_object.month}-{dt_object.day} 00:00:00"
-            cal_url = f"{config.urlBase}markets/v2/calendar?{start_date}&{end_date}"
+            day = f"{dt_object.year:04d}-{dt_object.month:02d}-{dt_object.day:02d}"
+            cal_url = f"{config.urlBase}markets/v2/calendar?start={day}&end={day}"
             cal_result = session.get(cal_url, headers=headers)
-            if str(cal_result.status_code) == "200":
+            if cal_result.status_code == 200:
                 if len(cal_result.json()) < 1:
                     logger.info(
                         "%s:%s ~ No trading session today",
@@ -187,11 +185,6 @@ def check_time(
     result = session.get(url, headers=headers)
     if result.status_code != 200:
         account.serverTime = 0
-        remote.post_log(
-            config,
-            f"Error finding server time:<br> {result.text[:500]}",
-            config.title,
-        )
         logger.error(
             "Error finding server time: %s %s",
             result.reason,

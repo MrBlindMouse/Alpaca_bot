@@ -31,8 +31,11 @@ class SimBroker:
         return self.positions.get(symbol, 0.0)
 
     def get_equity(self, prices: dict[str, float]) -> float:
+        # Engine carry-forwards missing bars; never invent $0 marks here.
         invested = sum(
-            self.positions.get(sym, 0.0) * prices.get(sym, 0.0) for sym in self.positions
+            qty * prices[sym]
+            for sym, qty in self.positions.items()
+            if qty and sym in prices
         )
         return self.cash + invested
 

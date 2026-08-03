@@ -20,6 +20,24 @@ def test_cache_upsert_and_prices_at(tmp_path):
     assert prices["MSFT"] == 2.4
 
 
+def test_bars_segregated_by_timeframe(tmp_path):
+    db = tmp_path / "bars.sqlite"
+    cache = BarCache(str(db))
+    cache.upsert_bars(
+        [("AAPL", "2025-01-02T14:35:00Z", 1, 2, 0.5, 1.5, 100, 1.4)],
+        timeframe="5Min",
+    )
+    cache.upsert_bars(
+        [("AAPL", "2025-01-02T14:35:00Z", 1, 2, 0.5, 1.5, 100, 9.9)],
+        timeframe="1Min",
+    )
+    assert cache.prices_at("2025-01-02T14:35:00Z", ["AAPL"], timeframe="5Min")["AAPL"] == 1.4
+    assert cache.prices_at("2025-01-02T14:35:00Z", ["AAPL"], timeframe="1Min")["AAPL"] == 9.9
+    assert cache.list_timestamps(
+        "2025-01-01T00:00:00Z", "2025-12-31T23:59:59Z", timeframe="1Min"
+    ) == ["2025-01-02T14:35:00Z"]
+
+
 def test_fetch_log_skip(tmp_path):
     db = tmp_path / "bars.sqlite"
     cache = BarCache(str(db))
@@ -28,6 +46,9 @@ def test_fetch_log_skip(tmp_path):
     )
     assert cache.is_fetched(
         "AAPL", "2025-01-01T00:00:00Z", "2025-01-31T23:59:59Z", timeframe="5Min"
+    )
+    assert not cache.is_fetched(
+        "AAPL", "2025-01-01T00:00:00Z", "2025-01-31T23:59:59Z", timeframe="1Min"
     )
     assert not cache.is_fetched(
         "MSFT", "2025-01-01T00:00:00Z", "2025-01-31T23:59:59Z", timeframe="5Min"

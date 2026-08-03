@@ -59,8 +59,11 @@ def run_backtest(
     margin: Optional[float] = None,
     equity_file: Optional[str] = None,
     trades_file: Optional[str] = None,
+    decisions_file: Optional[str] = None,
     write_equity: bool = True,
 ) -> dict:
+    # ponytail: RTH weekend+hours filter only (no exchange holidays); upgrade to
+    # Alpaca calendar if half-days matter.
     cache = BarCache(bt_cfg.bar_db)
     if symbols is None:
         symbols = load_symbols_from_file(bt_cfg.symbols_file)
@@ -69,7 +72,10 @@ def run_backtest(
 
     range_start = start if "T" in start else f"{start}T00:00:00Z"
     range_end = end if "T" in end else f"{end}T23:59:59Z"
-    timestamps = filter_rth_timestamps(cache.list_timestamps(range_start, range_end))
+    timeframe = bt_cfg.timeframe or "5Min"
+    timestamps = filter_rth_timestamps(
+        cache.list_timestamps(range_start, range_end, timeframe=timeframe)
+    )
     if not timestamps:
         raise RuntimeError("No RTH bars in cache for the requested range")
 
@@ -79,7 +85,7 @@ def run_backtest(
     initial_cash = cash if cash is not None else bt_cfg.initial_cash
     out_equity = equity_file or bt_cfg.equity_file
     out_trades = trades_file or bt_cfg.trades_file
-    out_decisions = bt_cfg.decisions_file
+    out_decisions = decisions_file or bt_cfg.decisions_file
     account = build_backtest_account(symbols, use_margin, initial_cash)
     broker = SimBroker(initial_cash, trading_cfg, trades_path=out_trades)
     ensure_parent_dir(out_decisions)
@@ -94,6 +100,7 @@ def run_backtest(
     total_fills = 0
     total_failures = 0
     skip_totals: dict[str, int] = {}
+    last_prices: dict[str, float] = {}
 
     def diagnostics(event: dict) -> None:
         nonlocal decision_events, tick_summaries, total_attempts, total_fills, total_failures
@@ -111,7 +118,14 @@ def run_backtest(
                     skip_totals[str(key)] = skip_totals.get(str(key), 0) + int(value)
 
     for ts in timestamps:
-        prices = cache.prices_at(ts, symbols)
+        prices = cache.prices_at(ts, symbols, timeframe=timeframe)
+        for sym, price in prices.items():
+            if price > 0:
+                last_prices[sym] = price
+        # Carry forward last good price — never mark missing holdings at $0.
+        for sym in symbols:
+            if sym not in prices and sym in last_prices:
+                prices[sym] = last_prices[sym]
         missing = [s for s in symbols if s not in prices]
         if missing:
             missing_warnings += 1

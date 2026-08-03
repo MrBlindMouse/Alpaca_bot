@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from alpaca_client import AlpacaAPIError, get_balances
+from alpaca_client import AlpacaAPIError, create_session, get_balances
 from analytics import load_trades
 from rebalance import (
     _limit_side_from_intent,
@@ -11,6 +11,13 @@ from rebalance import (
     rebalance_tick,
     sync_open_limit_orders,
 )
+
+
+def test_create_session_retries_transient_status_codes():
+    session = create_session()
+    adapter = session.get_adapter("https://")
+    status_forcelist = set(adapter.max_retries.status_forcelist)
+    assert {429, 500, 502, 503, 504}.issubset(status_forcelist)
 
 
 def test_limit_side_from_intent_initial_buy():
@@ -33,7 +40,7 @@ def test_sync_volume_from_broker_accepts_zero():
     assert ticker["volume"] == 0.0
 
 
-def test_process_open_limit_keeps_state_on_get_failure():
+def test_process_open_limit_keeps_state_on_get_failure(caplog):
     account = MagicMock()
     account.serverTime = 1_700_000_000
     account.market = "extended"
@@ -58,9 +65,31 @@ def test_process_open_limit_keeps_state_on_get_failure():
     failed = MagicMock(status_code=500, reason="Error")
     session.get.return_value = failed
 
-    _process_open_limit(session, config, account, 0, ticker, {})
+    with caplog.at_level("WARNING", logger="alpaca_bot.rebalance"):
+        _process_open_limit(session, config, account, 0, ticker, {})
     assert ticker["limitTrade"]["open"] is True
     assert ticker["limitTrade"]["id"] == "ord-1"
+    assert any("Failed to check open order" in r.message for r in caplog.records)
+    assert all(r.levelname != "ERROR" for r in caplog.records if "Failed to check open order" in r.message)
+
+
+def test_sync_open_limit_orders_warns_on_5xx(caplog):
+    account = MagicMock()
+    account.tickers = []
+    session = MagicMock()
+    config = MagicMock()
+    config.urlBase = "https://paper-api.alpaca."
+    session.get.return_value = MagicMock(status_code=500, reason="Internal Server Error")
+
+    with caplog.at_level("WARNING", logger="alpaca_bot.rebalance"):
+        sync_open_limit_orders(session, account, config)
+
+    assert any("Failed to list open orders" in r.message for r in caplog.records)
+    assert all(
+        r.levelname == "WARNING"
+        for r in caplog.records
+        if "Failed to list open orders" in r.message
+    )
 
 
 def test_rebalance_tick_does_not_use_stale_price_when_bar_missing():

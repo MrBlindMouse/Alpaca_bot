@@ -5,10 +5,16 @@ __pycache__
 test.py
 test2.py
 trading_state.json
+trading_state.json.tmp
 trades.jsonl
 backtest_trades.jsonl
+backtest_trades_m*.jsonl
 backtest_equity.csv
+backtest_equity_m*.csv
 backtest_comparison.csv
+backtest_decisions.jsonl
+backtest_decisions_m*.jsonl
 data/
 *.log
 *.log.*
+*.tmp

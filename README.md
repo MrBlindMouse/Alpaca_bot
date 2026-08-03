@@ -10,7 +10,7 @@ Personal saving and investment bot that rebalances a portfolio of NASDAQ-100–d
 - **Extended hours:** Supports pre/post market; places limit orders when the main session is closed.
 - **State:** Persists tickers, equity, market state, and open limit orders in `trading_state.json`.
 - **Trade log:** Every order and liquidation is appended to `trades.jsonl` for offline analysis.
-- **Optional remote logging/recording:** When `REMOTE_LOGGING_ENABLED=true`, posts logs, heartbeats, and daily records to bmd-studios.com (or `REMOTE_BASE_URL`). Default is off; failures never stop the bot.
+- **Optional remote webhook:** When `REMOTE_LOGGING_ENABLED=true`, POSTs trade fills, day-end equity, and WARNING+ logs to `REMOTE_BASE_URL` with optional HMAC (`REMOTE_WEBHOOK_SECRET`). Default is off; failures never stop the bot.
 
 ## Requirements
 
@@ -30,12 +30,13 @@ Personal saving and investment bot that rebalances a portfolio of NASDAQ-100–d
 
    | Variable | Description |
    |----------|-------------|
-   | `VERSION` | `PAPER` for paper trading, any other value (e.g. `real`) for live. |
+   | `VERSION` | `PAPER` or `LIVE` only (validated at startup). |
    | `PAPER_KEY` / `PAPER_SECRET` | Alpaca paper credentials (when `VERSION=PAPER`). |
-   | `API_KEY` / `API_SECRET` | Alpaca live credentials (when not paper). |
+   | `API_KEY` / `API_SECRET` | Alpaca live credentials (when `VERSION=LIVE`). |
    | `MARGIN` | Rebalance margin (float). Recommended range 0.02–0.15. |
-   | `REMOTE_LOGGING_ENABLED` | `true` to enable remote posts; default `false`. |
-   | `REMOTE_BASE_URL` | Base URL for remote endpoints (default `https://www.bmd-studios.com`). |
+   | `REMOTE_LOGGING_ENABLED` | `true` to enable webhook posts; default `false`. |
+   | `REMOTE_BASE_URL` | Full webhook URL (required when enabled). |
+   | `REMOTE_WEBHOOK_SECRET` | Shared secret for `X-Signature-256` HMAC-SHA256 of the body; empty = unsigned. |
    | `LOG_LEVEL` | Standard logging level (default `INFO`). |
    | `LOG_FILE` | Optional path for rotating log file (leave empty for console only). |
 
@@ -57,7 +58,7 @@ python -m tui
 
 Bot logs go to `alpaca_bot.log` when using the TUI (console logging is disabled so the UI stays readable). Set `LOG_FILE` in `.env` to customize.
 
-Scheduler: adaptive bot tick (60s when open/extended, up to 30m when closed), hourly balance check, day-end at 22:00 America/New_York when remote logging is enabled.
+Scheduler: adaptive bot tick (60s when open/extended, up to 30m when closed), hourly balance check, day-end at 22:00 America/New_York (posted to the webhook when remote logging is enabled).
 
 | Key | Action |
 |-----|--------|
@@ -115,12 +116,16 @@ Dashboard shows the last few WARNING+ lines; the Logs tab shows up to 400 lines 
 | `alpaca_client.py` | Alpaca HTTP session and account/positions |
 | `ticker_source.py` | NASDAQ-100 ticker discovery |
 | `market.py` | Market clock and session state |
-| `rebalance.py` | Rebalance loop |
+| `rebalance.py` | Shared `rebalance_tick`, limit maintain, live `bot()` |
+| `broker.py` / `live_broker.py` | Broker protocol and Alpaca adapter |
+| `resilience.py` | Circuit breaker |
 | `orders.py` | Order placement and `OrderResult` |
 | `trade_log.py` | Append-only `trades.jsonl` |
-| `remote.py` | Optional remote HTTP client |
-| `reporting.py` | Daily record and check-in |
-| `scheduler.py` | `bot_loop` and decorators |
+| `remote.py` | Optional HMAC webhook client (`post_event`) |
+| `reporting.py` | Day-end equity record |
+| `scheduler.py` | `bot_loop` and hourly balance check |
+| `backtest/` | Historical replay (`python -m backtest`) |
+| `log_viewer.py` / `utils.py` | Log parsing helpers / `trunc()` |
 | `requirements.txt` | Runtime dependencies |
 | `requirements-dev.txt` | pytest (development) |
 | `.env` | Local secrets (not committed) |
@@ -197,13 +202,11 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-CI runs pytest on Python 3.9, 3.11, and 3.12 (see `.github/workflows/test.yml`).
-
 ## External dependencies
 
 - **Alpaca** — trading, clock, calendar, positions, market data
 - **SlickCharts** — NASDAQ-100 constituent list (scraped)
-- **bmd-studios.com** — optional remote logging/recording (off by default)
+- **Webhook** — optional `REMOTE_BASE_URL` receiver for trade / day_end / log events (off by default)
 
 Alpaca API calls use `LimiterSession` (200/min). Scraping is separate and not rate-limited by that session.
 
@@ -212,5 +215,4 @@ Alpaca API calls use `LimiterSession` (200/min). Scraping is separate and not ra
 The bot is modular with tests and optional remote logging. Possible follow-ups:
 
 - Integration tests against Alpaca paper API (mocked HTTP)
-- Richer rebalance unit tests (margin band math)
 - Non-blocking scheduler if loop latency becomes an issue

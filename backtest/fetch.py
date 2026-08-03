@@ -69,8 +69,12 @@ def fetch_symbol(
         return 0
 
     if force:
-        cache.clear_fetch_log(symbol, range_start, range_end)
-        cache.clear_bars(symbol, range_start, range_end)
+        cache.clear_fetch_log(
+            symbol, range_start, range_end, timeframe=bt_cfg.timeframe
+        )
+        cache.clear_bars(
+            symbol, range_start, range_end, timeframe=bt_cfg.timeframe
+        )
 
     total = 0
     page_num = 0
@@ -86,7 +90,7 @@ def fetch_symbol(
     ):
         page_num += 1
         rows = _bar_rows(symbol, page)
-        total += cache.upsert_bars(rows)
+        total += cache.upsert_bars(rows, timeframe=bt_cfg.timeframe)
         logger.debug("%s page %s: %s bars", symbol, page_num, len(rows))
 
     cache.mark_fetched(
@@ -124,6 +128,7 @@ def fetch_all(
         )
 
     total_bars = 0
+    failed_symbols: List[str] = []
     for idx, symbol in enumerate(symbols, start=1):
         logger.info("Symbol %s/%s: %s", idx, len(symbols), symbol)
         try:
@@ -142,9 +147,15 @@ def fetch_all(
                 on_progress(f"{idx}/{len(symbols)} {symbol}: {count} bars")
         except Exception as exc:
             logger.error("Failed %s: %s", symbol, exc)
+            failed_symbols.append(symbol)
             if on_progress:
                 on_progress(f"{idx}/{len(symbols)} {symbol}: FAILED {exc}")
         if bt_cfg.symbol_delay_ms > 0 and idx < len(symbols):
             time.sleep(bt_cfg.symbol_delay_ms / 1000.0)
 
-    return {"symbols": len(symbols), "bars_inserted": total_bars, **cache.status()}
+    return {
+        "symbols": len(symbols),
+        "bars_inserted": total_bars,
+        "failed_symbols": failed_symbols,
+        **cache.status(),
+    }

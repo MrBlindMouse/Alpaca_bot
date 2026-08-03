@@ -55,8 +55,7 @@ def test_compute_tick_sleep_closed_until_open():
     assert compute_tick_sleep_seconds(snap, "closed", True) == 600
 
 
-@patch("market.remote.post_log")
-def test_empty_calendar_stays_closed_no_sleep(mock_post):
+def test_empty_calendar_stays_closed_no_sleep():
     account = MagicMock()
     account.market = "closed"
     account.equity = 1000
@@ -97,8 +96,7 @@ def test_empty_calendar_stays_closed_no_sleep(mock_post):
     mock_sleep.assert_not_called()
 
 
-@patch("market.remote.post_log")
-def test_clock_failure_clears_server_time(mock_post):
+def test_clock_failure_clears_server_time():
     account = MagicMock()
     account.serverTime = 999
     config = MagicMock()

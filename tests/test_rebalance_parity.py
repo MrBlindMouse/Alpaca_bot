@@ -49,3 +49,35 @@ def test_rebalance_tick_tracks_difference_below_margin():
 
     # Over weight vs base_balance but diff below margin -> stores diff without trading
     assert 0 < account.tickers[0]["difference"] < account.margin
+
+
+def test_rebalance_tick_hysteresis_fires_sell():
+    cfg = Config()
+    cfg.paper = True
+    cfg.margin = 0.05
+    cfg.dry_run = True
+
+    class Account:
+        tickers = [
+            _ticker("AAPL", 15.8, 100.0, diff=0.12),
+            _ticker("MSFT", 8.0, 100.0, diff=0.0),
+        ]
+        margin = 0.05
+        equity = 0.0
+        serverTime = 1_700_000_000
+        market = "open"
+
+    account = Account()
+    broker = SimBroker(600.0, cfg)
+    broker.positions["AAPL"] = 15.8
+    broker.positions["MSFT"] = 8.0
+
+    rebalance_tick(
+        account,
+        cfg,
+        prices={"AAPL": 100.0, "MSFT": 100.0},
+        broker=broker,
+        session="open",
+    )
+
+    assert broker.positions["AAPL"] < 15.8

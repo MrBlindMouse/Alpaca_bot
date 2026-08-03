@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import logging
 import os
 from dataclasses import dataclass
 from typing import List, Optional
@@ -12,8 +13,9 @@ from backtest.cache import BarCache
 from backtest.clock import filter_rth_timestamps
 from backtest.config import BacktestConfig, ensure_parent_dir
 from backtest.engine import run_backtest
-from backtest.report import run_summary
 from backtest.universe import load_symbols_from_file, load_weights_from_file
+
+logger = logging.getLogger("alpaca_bot.backtest.compare")
 
 
 @dataclass
@@ -77,6 +79,13 @@ def write_comparison_csv(path: str, results: List[StrategyResult]) -> None:
             )
 
 
+def _margin_artifact(path: str, margin: float, primary: Optional[float]) -> str:
+    if primary is not None and margin == primary:
+        return path
+    base, ext = os.path.splitext(path)
+    return f"{base}_m{margin:g}{ext or ''}"
+
+
 def run_comparisons(
     bt_cfg: BacktestConfig,
     *,
@@ -94,18 +103,32 @@ def run_comparisons(
     if not symbols:
         raise RuntimeError(f"No symbols in {bt_cfg.symbols_file}")
 
-    timestamps = filter_rth_timestamps(cache.list_timestamps(range_start, range_end))
+    timeframe = bt_cfg.timeframe or "5Min"
+    timestamps = filter_rth_timestamps(
+        cache.list_timestamps(range_start, range_end, timeframe=timeframe)
+    )
     if not timestamps:
         raise RuntimeError("No RTH bars in cache for the requested range")
 
     results: List[StrategyResult] = []
 
     ew = run_buy_and_hold(
-        cache, symbols, timestamps, cash, weights=None, strategy_name=STRATEGY_EQUAL
+        cache,
+        symbols,
+        timestamps,
+        cash,
+        weights=None,
+        strategy_name=STRATEGY_EQUAL,
+        timeframe=timeframe,
     )
     results.append(_summary_to_result(ew))
 
     weights = load_weights_from_file(bt_cfg.weights_file)
+    if not weights:
+        logger.warning(
+            "No cap-weights in %s; Cap-wt B&H falls back to equal weight",
+            bt_cfg.weights_file,
+        )
     cap = run_buy_and_hold(
         cache,
         symbols,
@@ -113,19 +136,16 @@ def run_comparisons(
         cash,
         weights=weights if weights else None,
         strategy_name=STRATEGY_CAP,
+        timeframe=timeframe,
     )
     results.append(_summary_to_result(cap))
 
     primary = primary_margin if primary_margin is not None else (margins[0] if margins else None)
 
     for margin in margins:
-        equity_file = bt_cfg.equity_file
-        trades_file = bt_cfg.trades_file
-        if margin != primary:
-            base, ext = os.path.splitext(bt_cfg.equity_file)
-            equity_file = f"{base}_m{margin:g}{ext or '.csv'}"
-            base_t, ext_t = os.path.splitext(bt_cfg.trades_file)
-            trades_file = f"{base_t}_m{margin:g}{ext_t or '.jsonl'}"
+        equity_file = _margin_artifact(bt_cfg.equity_file, margin, primary)
+        trades_file = _margin_artifact(bt_cfg.trades_file, margin, primary)
+        decisions_file = _margin_artifact(bt_cfg.decisions_file, margin, primary)
 
         summary = run_backtest(
             bt_cfg,
@@ -136,7 +156,8 @@ def run_comparisons(
             margin=margin,
             equity_file=equity_file,
             trades_file=trades_file,
-            write_equity=(margin == primary),
+            decisions_file=decisions_file,
+            write_equity=True,
         )
         summary["strategy"] = "Rebalancer"
         summary["margin"] = margin

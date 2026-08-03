@@ -3,6 +3,7 @@ import time
 from dataclasses import dataclass
 from typing import Literal, Optional
 
+import remote
 from alpaca_client import get_snapshot_vwap
 from trade_log import append_trade, build_trade_record
 from utils import trunc
@@ -36,7 +37,10 @@ class OrderResult:
 
 
 def _log_trade(config, **kwargs):
-    append_trade(build_trade_record(paper=config.paper, **kwargs))
+    record = build_trade_record(paper=config.paper, **kwargs)
+    append_trade(record)
+    if record.get("status") == "filled":
+        remote.post_event(config, "trade", dict(record))
 
 
 def _sanitize_error(response) -> str:
@@ -70,6 +74,7 @@ def log_limit_status(
         "filled": "filled",
         "canceled": "limit_canceled",
         "expired": "limit_expired",
+        "rejected": "failed",
     }
     status = status_map.get(alpaca_status)
     if not status:
@@ -258,7 +263,7 @@ def create_order(
                 json_response = final_resp.json()
 
         final = json_response.get("status", "")
-        if final in ("open", "accepted", "pending_new", "new"):
+        if final in ("open", "accepted", "pending_new", "new", "partially_filled"):
             delete_url = f"{config.urlBase}markets/v2/orders/{order_id}"
             cancel_resp = session.delete(delete_url, headers=headers)
             if str(cancel_resp.status_code) == "204":
@@ -270,6 +275,15 @@ def create_order(
                     symbol,
                 )
                 final = "canceled"
+                # Re-GET so filled_qty reflects any partial fill before cancel.
+                final_resp = session.get(
+                    f"{config.urlBase}markets/v2/orders/{order_id}", headers=headers
+                )
+                if str(final_resp.status_code) == "200":
+                    json_response = final_resp.json()
+                    broker_status = json_response.get("status", "")
+                    if broker_status in ("filled", "canceled", "expired"):
+                        final = broker_status
             else:
                 logger.error(
                     "Failed to cancel market order %s after timeout: %s",
@@ -277,8 +291,8 @@ def create_order(
                     cancel_resp.status_code,
                 )
 
-        if final == "filled":
-            filled_qty, filled_avg = _filled_from_response(json_response)
+        filled_qty, filled_avg = _filled_from_response(json_response)
+        if final == "filled" or (filled_qty is not None and filled_qty > 0):
             _log_trade(
                 config,
                 symbol=symbol,

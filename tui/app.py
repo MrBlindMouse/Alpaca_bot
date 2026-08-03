@@ -70,7 +70,6 @@ from backtest.config import load_backtest_config
 from backtest.service import (
     apply_ui_overrides,
     cache_status_dict,
-    default_config,
     execute_comparisons,
     execute_fetch,
     list_cached_datasets,
@@ -190,12 +189,75 @@ class QuitModal(ModalScreen[bool]):
         self.dismiss(False)
 
 
+class ForceBalanceModal(ModalScreen[Optional[str]]):
+    """Typed ticker input for RTH force-balance to equal-$ target."""
+
+    DEFAULT_CSS = """
+    ForceBalanceModal {
+        align: center middle;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel", show=False),
+    ]
+
+    def __init__(self, *, paper: bool):
+        super().__init__()
+        self._paper = paper
+
+    def compose(self) -> ComposeResult:
+        mode = "PAPER" if self._paper else "LIVE"
+        mode_rich = f"[green]{mode}[/]" if self._paper else f"[#d29922]{mode}[/]"
+        with Container(id="force_dialog"):
+            yield Label("Force balance ticker", id="force_title")
+            yield Static(
+                f"[dim]Mode:[/dim] {mode_rich}  "
+                f"[dim]·  RTH only · ignores hysteresis[/dim]",
+                id="force_context",
+            )
+            yield Input(
+                placeholder="Ticker (e.g. AAPL)",
+                id="force_ticker_input",
+                restrict=r"[A-Za-z0-9.]*",
+            )
+            with Horizontal(id="force_actions"):
+                yield Button("Cancel", id="force_no", variant="primary")
+                yield Button("Force balance", id="force_yes", variant="warning")
+
+    def on_mount(self) -> None:
+        self.query_one("#force_ticker_input", Input).focus()
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+    def _submit(self) -> None:
+        raw = self.query_one("#force_ticker_input", Input).value.strip().upper()
+        if not raw:
+            self.app.notify("Enter a ticker symbol", severity="warning")
+            return
+        self.dismiss(raw)
+
+    @on(Input.Submitted, "#force_ticker_input")
+    def on_input_submitted(self) -> None:
+        self._submit()
+
+    @on(Button.Pressed, "#force_yes")
+    def yes(self) -> None:
+        self._submit()
+
+    @on(Button.Pressed, "#force_no")
+    def no(self) -> None:
+        self.dismiss(None)
+
+
 class AlpacaApp(App):
     TITLE = "Alpaca Bot"
     CSS_PATH = Path(__file__).parent / "styles.tcss"
 
     BINDINGS = [
         Binding("t", "toggle_bot", "Bot", show=True),
+        Binding("f", "force_balance", "Force", show=True),
         Binding("r", "refresh_all", "Refresh", show=True),
         Binding("q", "request_quit", "Quit", show=True),
         Binding("1", "tab_dashboard", "Dash", show=True),
@@ -235,7 +297,7 @@ class AlpacaApp(App):
         self._positions_table_sig: Optional[str] = None
         self._trades_table_sig: Optional[str] = None
         self._analytics_table_sig: Optional[str] = None
-        self._bt_cfg = default_config()
+        self._bt_cfg = load_backtest_config()
         self._backtest_busy = False
         self._bt_primary_margin: Optional[float] = None
         self._bt_comparison_sig: Optional[str] = None
@@ -278,7 +340,10 @@ class AlpacaApp(App):
                     with Horizontal(id="dashboard_actions"):
                         yield Button("Start bot", id="btn_toggle", variant="success")
             with TabPane("Positions", id="tab_positions"):
-                yield DataTable(id="positions_table", zebra_stripes=True)
+                with Vertical():
+                    with Horizontal(id="positions_toolbar"):
+                        yield Button("Force balance…", id="btn_force_balance")
+                    yield DataTable(id="positions_table", zebra_stripes=True)
             with TabPane("Trades", id="tab_trades"):
                 yield DataTable(id="trades_table", zebra_stripes=False)
             with TabPane("Analytics", id="tab_analytics"):
@@ -1025,6 +1090,10 @@ class AlpacaApp(App):
         if not self._alpaca_refreshing:
             self.refresh_alpaca()
 
+    @on(Button.Pressed, "#btn_force_balance")
+    def btn_force_balance(self):
+        self.action_force_balance()
+
     def _set_backtest_busy(self, busy: bool) -> None:
         self._backtest_busy = busy
         for widget_id in ("btn_bt_fetch", "btn_bt_run", "btn_bt_status"):
@@ -1348,6 +1417,36 @@ class AlpacaApp(App):
             self.action_stop_bot()
         else:
             self.action_start_bot()
+
+    def action_force_balance(self):
+        if not self.runner:
+            self.notify("Bot not initialized", severity="error")
+            return
+        if not Status.state_exists():
+            self.notify("Create trading state first (Settings)", severity="error")
+            return
+        self.push_screen(
+            ForceBalanceModal(paper=self.config.paper),
+            self._force_balance_result,
+        )
+
+    def _force_balance_result(self, symbol: str | None) -> None:
+        if not symbol:
+            return
+        self.run_force_balance(symbol)
+
+    @work(thread=True)
+    def run_force_balance(self, symbol: str) -> None:
+        if not self.runner:
+            return
+        try:
+            ok, message = self.runner.force_balance(symbol)
+        except Exception as exc:
+            self.call_from_thread(self.notify, str(exc), severity="error")
+            return
+        severity = "information" if ok else "error"
+        self.call_from_thread(self.notify, message, severity=severity)
+        self.call_from_thread(self.refresh_data, force_heavy=True)
 
     @work(thread=True)
     def refresh_alpaca(self):

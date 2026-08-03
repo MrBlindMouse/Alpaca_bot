@@ -1,4 +1,8 @@
-"""In-process bot scheduler with start/stop for CLI and TUI."""
+"""In-process bot scheduler with start/stop for CLI and TUI.
+
+ponytail: single-process daemon thread only. Upgrade to a separate worker
+process only if tick latency or crash isolation becomes a real problem.
+"""
 
 import logging
 import threading
@@ -7,9 +11,11 @@ from datetime import date, datetime, timezone
 from typing import Optional, Tuple
 from zoneinfo import ZoneInfo
 
-from alpaca_client import create_session
+from alpaca_client import AlpacaAPIError, alpaca_headers, create_session, get_account
 from config import Config, log_remote_disabled_once
-from market import ClockSnapshot, MarketTracker, compute_tick_sleep_seconds
+from live_broker import LiveBroker
+from market import ClockSnapshot, MarketTracker, check_time, compute_tick_sleep_seconds
+from rebalance import _fetch_snapshot_prices, force_rebalance_symbol
 from reporting import day_end
 from resilience import CircuitBreaker
 from scheduler import bot_loop, check_balances
@@ -34,6 +40,7 @@ class BotRunner:
         self._last_loop_at: Optional[float] = None
         self._last_error: Optional[str] = None
         self.circuit = CircuitBreaker()
+        self._tick_lock = threading.Lock()
 
     @property
     def running(self) -> bool:
@@ -61,23 +68,81 @@ class BotRunner:
         self.circuit._consecutive_failures = consecutive_failures
 
     def _run_bot_loop(self) -> Tuple[bool, Optional[ClockSnapshot]]:
-        try:
-            result = bot_loop(
-                self.session,
-                self.account,
-                self.config,
-                self.tracker,
-                stop_event=self._stop,
-                circuit=self.circuit,
-            )
-            self._last_error = None
-            return result
-        except Exception as exc:
-            self._last_error = str(exc)
-            logger.exception("bot_loop failed")
-            return False, None
-        finally:
-            self._last_loop_at = time.time()
+        with self._tick_lock:
+            try:
+                result = bot_loop(
+                    self.session,
+                    self.account,
+                    self.config,
+                    self.tracker,
+                    stop_event=self._stop,
+                    circuit=self.circuit,
+                )
+                self._last_error = None
+                return result
+            except Exception as exc:
+                self._last_error = str(exc)
+                logger.exception("bot_loop failed")
+                return False, None
+            finally:
+                self._last_loop_at = time.time()
+
+    def force_balance(self, symbol: str) -> Tuple[bool, str]:
+        """RTH one-shot: force one ticker to equal-$ target (no hysteresis)."""
+        sym = (symbol or "").strip().upper()
+        if not sym:
+            return False, "Symbol required"
+
+        with self._tick_lock:
+            try:
+                self.config.update()
+                self.account.margin = self.config.margin
+                clock_ok, _snapshot = check_time(
+                    self.session, self.account, self.config, self.tracker
+                )
+                if not clock_ok:
+                    msg = "Market clock unavailable"
+                    self._last_error = msg
+                    return False, msg
+                if self.account.market != "open":
+                    msg = (
+                        f"Market not open (session={self.account.market}); "
+                        "force balance is RTH-only"
+                    )
+                    return False, msg
+
+                try:
+                    account_data = get_account(self.session, self.config)
+                except AlpacaAPIError as exc:
+                    self._last_error = str(exc)
+                    return False, str(exc)
+                self.account.equity = float(account_data["equity"])
+
+                headers = alpaca_headers(self.config, json_content=True)
+                prices = _fetch_snapshot_prices(
+                    self.session, self.config, self.account, headers
+                )
+                broker = LiveBroker(
+                    self.session, self.config, self.account, circuit=self.circuit
+                )
+                ok, message = force_rebalance_symbol(
+                    self.account,
+                    self.config,
+                    symbol=sym,
+                    prices=prices,
+                    broker=broker,
+                    session="open",
+                )
+                if ok:
+                    self.account.save_state()
+                    self._last_error = None
+                else:
+                    self._last_error = message
+                return ok, message
+            except Exception as exc:
+                self._last_error = str(exc)
+                logger.exception("force_balance failed")
+                return False, str(exc)
 
     def _safe_check_balances(self):
         try:
