@@ -8,8 +8,8 @@ Personal saving and investment bot that rebalances a portfolio of NASDAQ-100–d
 - **Rebalance logic:** Targets equal notional value per ticker with a configurable margin; buys/sells to bring positions back within the band; uses limit orders when the market is in extended hours.
 - **Paper and live:** Switch via `VERSION` in `.env`; uses Alpaca paper or live API and keys accordingly.
 - **Extended hours:** Supports pre/post market; places limit orders when the main session is closed.
-- **State:** Persists tickers, equity, market state, and open limit orders in `trading_state.json`.
-- **Trade log:** Every order and liquidation is appended to `trades.jsonl` for offline analysis.
+- **State:** Persists tickers, equity, cash, market state, and open limit orders in `trading_state.json`.
+- **Trade log:** Filled trades append to `trades.jsonl` (P/L). Non-fill order lifecycle events append to `orders.jsonl`.
 - **Optional remote webhook:** When `REMOTE_LOGGING_ENABLED=true`, POSTs trade fills, day-end equity, and WARNING+ logs to `REMOTE_BASE_URL` with optional HMAC (`REMOTE_WEBHOOK_SECRET`). Default is off; failures never stop the bot.
 
 ## Requirements
@@ -63,7 +63,7 @@ Scheduler: adaptive bot tick (60s when open/extended, up to 30m when closed), ho
 | Key | Action |
 |-----|--------|
 | `t` | Toggle start/stop bot |
-| `r` | Refresh state, trades, and Alpaca data (Logs tab reloads from file) |
+| `r` | Refresh state/trades; run Alpaca accuracy check (Logs tab reloads from file) |
 | `q` | Quit (prompts if bot is running) |
 | `1` | Dashboard |
 | `2` | Positions |
@@ -120,7 +120,7 @@ Dashboard shows the last few WARNING+ lines; the Logs tab shows up to 400 lines 
 | `broker.py` / `live_broker.py` | Broker protocol and Alpaca adapter |
 | `resilience.py` | Circuit breaker |
 | `orders.py` | Order placement and `OrderResult` |
-| `trade_log.py` | Append-only `trades.jsonl` |
+| `trade_log.py` | Append-only `trades.jsonl` (fills) / `orders.jsonl` (non-fills) |
 | `remote.py` | Optional HMAC webhook client (`post_event`) |
 | `reporting.py` | Day-end equity record |
 | `scheduler.py` | `bot_loop` and hourly balance check |
@@ -130,20 +130,21 @@ Dashboard shows the last few WARNING+ lines; the Logs tab shows up to 400 lines 
 | `requirements-dev.txt` | pytest (development) |
 | `.env` | Local secrets (not committed) |
 | `trading_state.json` | Runtime operational state |
-| `trades.jsonl` | Runtime trade history (not committed) |
+| `trades.jsonl` | Filled trade history for P/L (not committed) |
+| `orders.jsonl` | Non-fill order events (not committed) |
 
 See [AGENTS.md](AGENTS.md) for a concise map for contributors and coding agents.
 
 ## Trade analysis
 
-All trades are written to `trades.jsonl` (one JSON object per line). Example queries:
+Filled trades go to `trades.jsonl`; failed/limit lifecycle events go to `orders.jsonl`. Example queries:
 
 ```bash
-# Pretty-print all trades
+# Pretty-print all fills
 cat trades.jsonl | jq .
 
 # Filled buys only
-jq 'select(.status == "filled" and .side == "buy")' trades.jsonl
+jq 'select(.side == "buy")' trades.jsonl
 
 # Count by symbol
 jq -r .symbol trades.jsonl | sort | uniq -c
@@ -158,13 +159,14 @@ trades = [json.loads(line) for line in open("trades.jsonl")]
 
 ## Analytics tab (TUI)
 
-The **Analytics** tab combines `trades.jsonl` (filtered by period) with `trading_state.json` and optional Alpaca refresh.
+The **Analytics** tab combines `trades.jsonl` (period for Trading P/L; all-time for Unreal cashflow) with `trading_state.json` marks. **Alpaca accuracy check** (button / `r`) loads broker positions/account and shows Unreal/Cash deltas vs the log/state numbers — it does not replace them.
 
 | Column | Meaning |
 |--------|---------|
-| **Price** | Current share price from Alpaca positions after refresh, otherwise from `trading_state.json`. |
+| **Buy $ / Sell $** | Sum of filled notional for the period, excluding initial buys (`rebalance_initial`) and orphan liquidations (`liquidate`). |
+| **Value** | `qty × price` from `trading_state.json`. |
 | **Trading P/L** | `(sell $ − buy $) + (net rebalance qty × current price)` for **filled** rebalance trades (`rebalance_buy`, `rebalance_sell`, `rebalance`) in the period. Excludes initial buys (`rebalance_initial`) and orphan liquidations (`liquidate`). `—` when there were no rebalance fills for that symbol. Summary line shows the portfolio total. |
-| **Unreal. P/L** | Alpaca `market_value − cost_basis` after **Refresh from Alpaca**. |
+| **Unreal. P/L** | `held×price − (buy$ − sell$)` from **all-time** fills (every intent) plus current state mark. Period filter does not apply to the cashflow leg. |
 | **Swing %** | How far the position is from the bot’s equal-weight target (rebalance band), not daily stock return. |
 
 Summary **Avg Net $** is the per-ticker rebalance target: `equity ÷ (ticker_count + ticker_count×margin÷2)` (same as the live rebalance loop).

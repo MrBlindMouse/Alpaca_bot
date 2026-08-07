@@ -30,3 +30,15 @@ def test_append_trade_writes_jsonl():
         assert line["symbol"] == "MSFT"
         assert "ts" in line
         assert utc_now_iso().endswith("Z")
+
+
+def test_append_order_event_writes_jsonl():
+    with tempfile.TemporaryDirectory() as tmp:
+        path = f"{tmp}/orders.jsonl"
+        from trade_log import append_order_event
+
+        append_order_event({"symbol": "AAPL", "status": "limit_placed"}, path=path)
+        with open(path, encoding="utf-8") as f:
+            line = json.loads(f.readline())
+        assert line["status"] == "limit_placed"
+        assert "ts" in line

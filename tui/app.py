@@ -46,6 +46,7 @@ from tui.widgets import (
     dashboard_metrics_markup,
     format_activity_chart,
     format_money,
+    format_pl,
     format_pl_rich,
     format_swing_plain,
     server_time_label,
@@ -57,6 +58,7 @@ from alpaca_client import get_account, get_balances
 from analytics import (
     activity_bars,
     aggregate_by_ticker,
+    load_order_events,
     load_state_snapshot,
     load_trades,
     portfolio_summary,
@@ -95,8 +97,8 @@ LOG_FILTER_OPTIONS = [("All levels", "ALL")] + [(n, n) for n in LOG_LEVEL_NAMES]
 LOG_BOT_LEVEL_OPTIONS = [(n, n) for n in LOG_LEVEL_NAMES]
 
 ACTIVITY_BAR_LIMIT = 10
-ALPACA_REFRESH_LABEL = "Refresh from Alpaca"
-ALPACA_REFRESHING_LABEL = "Refreshing..."
+ALPACA_REFRESH_LABEL = "Alpaca accuracy check"
+ALPACA_REFRESHING_LABEL = "Checking Alpaca..."
 REFRESH_INTERVAL_FAST = 2.0
 REFRESH_INTERVAL_HEAVY_IDLE = 5.0
 
@@ -251,6 +253,71 @@ class ForceBalanceModal(ModalScreen[Optional[str]]):
         self.dismiss(None)
 
 
+class WriteOffModal(ModalScreen[Optional[str]]):
+    """Confirm write-off / quarantine for an untradable orphan."""
+
+    DEFAULT_CSS = """
+    WriteOffModal {
+        align: center middle;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel", show=False),
+    ]
+
+    def __init__(self, *, paper: bool, quarantined: list[str] | None = None):
+        super().__init__()
+        self._paper = paper
+        self._quarantined = quarantined or []
+
+    def compose(self) -> ComposeResult:
+        mode = "PAPER" if self._paper else "LIVE"
+        mode_rich = f"[green]{mode}[/]" if self._paper else f"[#d29922]{mode}[/]"
+        q_hint = ", ".join(self._quarantined[:8]) if self._quarantined else "(none)"
+        with Container(id="writeoff_dialog"):
+            yield Label("Write off ticker", id="writeoff_title")
+            yield Static(
+                f"[dim]Mode:[/dim] {mode_rich}  "
+                f"[dim]·  quarantine orphan · no order[/dim]\n"
+                f"[dim]Quarantined:[/dim] {q_hint}",
+                id="writeoff_context",
+            )
+            yield Input(
+                placeholder="Ticker (e.g. EA)",
+                id="writeoff_ticker_input",
+                restrict=r"[A-Za-z0-9.]*",
+            )
+            with Horizontal(id="writeoff_actions"):
+                yield Button("Cancel", id="writeoff_no", variant="primary")
+                yield Button("Write off", id="writeoff_yes", variant="warning")
+
+    def on_mount(self) -> None:
+        self.query_one("#writeoff_ticker_input", Input).focus()
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+    def _submit(self) -> None:
+        raw = self.query_one("#writeoff_ticker_input", Input).value.strip().upper()
+        if not raw:
+            self.app.notify("Enter a ticker symbol", severity="warning")
+            return
+        self.dismiss(raw)
+
+    @on(Input.Submitted, "#writeoff_ticker_input")
+    def on_input_submitted(self) -> None:
+        self._submit()
+
+    @on(Button.Pressed, "#writeoff_yes")
+    def yes(self) -> None:
+        self._submit()
+
+    @on(Button.Pressed, "#writeoff_no")
+    def no(self) -> None:
+        self.dismiss(None)
+
+
 class AlpacaApp(App):
     TITLE = "Alpaca Bot"
     CSS_PATH = Path(__file__).parent / "styles.tcss"
@@ -258,6 +325,7 @@ class AlpacaApp(App):
     BINDINGS = [
         Binding("t", "toggle_bot", "Bot", show=True),
         Binding("f", "force_balance", "Force", show=True),
+        Binding("w", "write_off", "Write-off", show=True),
         Binding("r", "refresh_all", "Refresh", show=True),
         Binding("q", "request_quit", "Quit", show=True),
         Binding("1", "tab_dashboard", "Dash", show=True),
@@ -276,6 +344,8 @@ class AlpacaApp(App):
         self.runner: Optional[BotRunner] = None
         self._state: Optional[dict] = None
         self._trades: list = []
+        self._all_time_fills: list = []
+        self._order_events: list = []
         self._positions: Optional[list] = None
         self._account: Optional[dict] = None
         self._period = "all"
@@ -343,6 +413,7 @@ class AlpacaApp(App):
                 with Vertical():
                     with Horizontal(id="positions_toolbar"):
                         yield Button("Force balance…", id="btn_force_balance")
+                        yield Button("Write off…", id="btn_write_off")
                     yield DataTable(id="positions_table", zebra_stripes=True)
             with TabPane("Trades", id="tab_trades"):
                 yield DataTable(id="trades_table", zebra_stripes=False)
@@ -524,11 +595,10 @@ class AlpacaApp(App):
         ana = self.query_one("#analytics_table", DataTable)
         for label, key in (
             ("Symbol", "symbol"),
-            ("Trades", "trades"),
             ("Filled", "filled"),
             ("Buy $", "buy"),
             ("Sell $", "sell"),
-            ("Price", "price"),
+            ("Value", "value"),
             ("Trading P/L", "trading_pl"),
             ("Unreal. P/L", "unreal_pl"),
             ("Swing %", "swing"),
@@ -676,6 +746,8 @@ class AlpacaApp(App):
         self._last_refresh_at = datetime.now(timezone.utc)
         self._state = load_state_snapshot()
         self._trades = load_trades(period=self._period)
+        self._all_time_fills = load_trades(period="all")
+        self._order_events = load_order_events(period=self._period)
         self._update_status_bar()
         self._sync_bot_toggle()
 
@@ -701,7 +773,7 @@ class AlpacaApp(App):
             else "—"
         )
         meta_extra = (
-            "  ·  [dim]Cash: refresh from Alpaca for live balance[/dim]"
+            "  ·  [dim]Cash: waiting for bot poll[/dim]"
             if cash_estimated
             else ""
         )
@@ -846,8 +918,9 @@ class AlpacaApp(App):
         stats = aggregate_by_ticker(
             self._trades,
             state_tickers=st.get("tickers"),
-            positions=self._positions,
             account_equity=equity,
+            order_events=self._order_events,
+            all_time_fills=self._all_time_fills,
         )
         summary = portfolio_summary(
             self._trades,
@@ -855,6 +928,21 @@ class AlpacaApp(App):
             account=self._account,
             positions=self._positions,
             ticker_stats=stats,
+            order_events=self._order_events,
+        )
+        check_bits = []
+        if summary.alpaca_unrealized_pl is not None:
+            delta = summary.unrealized_pl - summary.alpaca_unrealized_pl
+            check_bits.append(
+                f"Unreal Δ {format_pl(delta)} vs Alpaca"
+            )
+        if summary.alpaca_cash is not None:
+            cash_delta = summary.cash - summary.alpaca_cash
+            check_bits.append(f"Cash Δ {format_pl(cash_delta)} vs Alpaca")
+        check_line = (
+            f"\n[dim]Accuracy check: {' · '.join(check_bits)}[/dim]"
+            if check_bits
+            else ""
         )
         summary_content = (
             f"[b]Trades[/b] {summary.trade_count}  "
@@ -869,7 +957,9 @@ class AlpacaApp(App):
             f"{summary.largest_swing_pct:.1f}%\n"
             f"[dim]Trading P/L = (sell $ − buy $) + net rebalance qty×price "
             "(rebalance fills only; excludes initial buy and liquidation). "
+            "Unreal = held×price − (buy$ − sell$) from all fills (all-time). "
             "Click headers to sort.[/dim]"
+            f"{check_line}"
         )
         sm = self.query_one("#analytics_summary", Static)
         self._analytics_summary_content = update_text_if_changed(
@@ -1020,7 +1110,9 @@ class AlpacaApp(App):
     def period_changed(self, event: Select.Changed):
         self._period = str(event.value)
         self._trades = load_trades(period=self._period)
+        self._order_events = load_order_events(period=self._period)
         self._trades_table_sig = None
+        self._analytics_table_sig = None
         self._refresh_trades()
         self._refresh_analytics()
 
@@ -1093,6 +1185,10 @@ class AlpacaApp(App):
     @on(Button.Pressed, "#btn_force_balance")
     def btn_force_balance(self):
         self.action_force_balance()
+
+    @on(Button.Pressed, "#btn_write_off")
+    def btn_write_off(self):
+        self.action_write_off()
 
     def _set_backtest_busy(self, busy: bool) -> None:
         self._backtest_busy = busy
@@ -1448,6 +1544,41 @@ class AlpacaApp(App):
         self.call_from_thread(self.notify, message, severity=severity)
         self.call_from_thread(self.refresh_data, force_heavy=True)
 
+    def action_write_off(self):
+        if not self.runner:
+            self.notify("Bot not initialized", severity="error")
+            return
+        if not Status.state_exists():
+            self.notify("Create trading state first (Settings)", severity="error")
+            return
+        quarantined = [
+            str(q.get("symbol"))
+            for q in getattr(self.runner.account, "quarantined", []) or []
+            if q.get("symbol")
+        ]
+        self.push_screen(
+            WriteOffModal(paper=self.config.paper, quarantined=quarantined),
+            self._write_off_result,
+        )
+
+    def _write_off_result(self, symbol: str | None) -> None:
+        if not symbol:
+            return
+        self.run_write_off(symbol)
+
+    @work(thread=True)
+    def run_write_off(self, symbol: str) -> None:
+        if not self.runner:
+            return
+        try:
+            ok, message = self.runner.write_off(symbol)
+        except Exception as exc:
+            self.call_from_thread(self.notify, str(exc), severity="error")
+            return
+        severity = "information" if ok else "error"
+        self.call_from_thread(self.notify, message, severity=severity)
+        self.call_from_thread(self.refresh_data, force_heavy=True)
+
     @work(thread=True)
     def refresh_alpaca(self):
         if not self.runner:
@@ -1476,7 +1607,7 @@ class AlpacaApp(App):
         self._refresh_analytics()
         self._positions_table_sig = None
         self._refresh_positions()
-        self.notify("Alpaca data refreshed", severity="information")
+        self.notify("Alpaca accuracy check updated", severity="information")
 
     def action_refresh_all(self):
         self._positions_table_sig = None

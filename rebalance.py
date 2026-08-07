@@ -8,7 +8,7 @@ from typing import Any, Callable, Optional
 from alpaca_client import AlpacaAPIError, alpaca_headers, get_account, get_balances
 from live_broker import LiveBroker
 from orders import log_limit_status
-from trade_log import DEFAULT_TRADE_FILE
+from trade_log import DEFAULT_ORDER_FILE, DEFAULT_TRADE_FILE
 from utils import trunc
 
 logger = logging.getLogger("alpaca_bot.rebalance")
@@ -23,6 +23,11 @@ _INITIAL_SWING_PCT = 100.0
 
 def _swing_pct(diff: float) -> float:
     return trunc(float(diff) * 100, 1)
+
+
+def _apply_tradable_equity(account, raw: float) -> float:
+    fn = getattr(account, "tradable_equity", None)
+    return float(fn(raw)) if callable(fn) else float(raw)
 
 
 def _limit_meta(ticker):
@@ -68,11 +73,7 @@ def _log_skip(symbol: str, intent: str, reason: str, diff: Optional[float]) -> N
     )
 
 
-def _intent_from_limit_placed(
-    order_id: str,
-    trades_path: Optional[str] = None,
-) -> Optional[str]:
-    path = trades_path or DEFAULT_TRADE_FILE
+def _intent_from_jsonl(order_id: str, path: str) -> Optional[str]:
     if not order_id or not os.path.exists(path):
         return None
     intent = None
@@ -88,6 +89,18 @@ def _intent_from_limit_placed(
             if row.get("order_id") == order_id and row.get("status") == "limit_placed":
                 intent = row.get("intent")
     return intent
+
+
+def _intent_from_limit_placed(
+    order_id: str,
+    orders_path: Optional[str] = None,
+    trades_path: Optional[str] = None,
+) -> Optional[str]:
+    """Recover limit intent from orders.jsonl; fall back to legacy trades.jsonl."""
+    intent = _intent_from_jsonl(order_id, orders_path or DEFAULT_ORDER_FILE)
+    if intent is not None:
+        return intent
+    return _intent_from_jsonl(order_id, trades_path or DEFAULT_TRADE_FILE)
 
 
 def _log_limit_terminal(intent: str, symbol: str, swing_pct: Optional[float], order_id: str, status: str) -> None:
@@ -248,7 +261,7 @@ def rebalance_tick(
     if total_pos == 0:
         return
 
-    account.equity = broker.get_equity(prices)
+    account.equity = _apply_tradable_equity(account, broker.get_equity(prices))
     base_balance = account.equity / (total_pos + ((total_pos * account.margin) / 2))
 
     tick_stats = {
@@ -1016,7 +1029,7 @@ def force_rebalance_symbol(
         return False, f"No price for {sym}"
 
     ticker["price"] = price
-    account.equity = broker.get_equity(prices)
+    account.equity = _apply_tradable_equity(account, broker.get_equity(prices))
     target = compute_balance_target(account.equity, total_pos, float(account.margin))
     if target is None or target <= 0:
         return False, "Cannot compute balance target"
@@ -1080,6 +1093,7 @@ def bot(session, account, config, circuit=None):
                 circuit.record_failure()
             return
         account.equity = float(account_data["equity"])
+        account.cash = float(account_data.get("cash") or 0)
         logger.info("Updating tickers")
         account.check_ticker(session, config)
         sync_open_limit_orders(session, account, config)
@@ -1099,6 +1113,7 @@ def bot(session, account, config, circuit=None):
             circuit.record_failure()
         return
     account.equity = float(account_data["equity"])
+    account.cash = float(account_data.get("cash") or 0)
     prices = _fetch_snapshot_prices(session, config, account, headers)
     broker = LiveBroker(session, config, account, circuit=circuit)
     rebalance_tick(

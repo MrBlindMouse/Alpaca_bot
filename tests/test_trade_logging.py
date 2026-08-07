@@ -128,8 +128,8 @@ def test_rebalance_tick_attempt_and_skip_logging(caplog):
     assert "Skip AAPL rebalance_sell reason=below_margin swing=" in caplog.text
 
 
-def test_intent_from_limit_placed_reads_trades_jsonl(tmp_path):
-    path = tmp_path / "trades.jsonl"
+def test_intent_from_limit_placed_reads_orders_jsonl(tmp_path):
+    orders = tmp_path / "orders.jsonl"
     rows = [
         {
             "order_id": "ord-1",
@@ -144,17 +144,42 @@ def test_intent_from_limit_placed_reads_trades_jsonl(tmp_path):
             "symbol": "AAPL",
         },
     ]
-    with open(path, "w", encoding="utf-8") as file:
+    with open(orders, "w", encoding="utf-8") as file:
         for row in rows:
             file.write(json.dumps(row) + "\n")
 
-    assert _intent_from_limit_placed("ord-1", str(path)) == "rebalance_initial"
-    assert _intent_from_limit_placed("missing", str(path)) is None
+    assert _intent_from_limit_placed("ord-1", orders_path=str(orders)) == "rebalance_initial"
+    assert _intent_from_limit_placed("missing", orders_path=str(orders)) is None
 
 
-def test_sync_open_limit_orders_recovers_intent_from_trades(tmp_path, monkeypatch):
-    trades_path = tmp_path / "trades.jsonl"
-    trades_path.write_text(
+def test_intent_from_limit_placed_falls_back_to_trades(tmp_path):
+    trades = tmp_path / "trades.jsonl"
+    trades.write_text(
+        json.dumps(
+            {
+                "order_id": "ord-legacy",
+                "status": "limit_placed",
+                "intent": "rebalance_buy",
+                "symbol": "MSFT",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    missing_orders = tmp_path / "orders.jsonl"
+    assert (
+        _intent_from_limit_placed(
+            "ord-legacy",
+            orders_path=str(missing_orders),
+            trades_path=str(trades),
+        )
+        == "rebalance_buy"
+    )
+
+
+def test_sync_open_limit_orders_recovers_intent_from_orders(tmp_path, monkeypatch):
+    orders_path = tmp_path / "orders.jsonl"
+    orders_path.write_text(
         json.dumps(
             {
                 "order_id": "ord-1",
@@ -166,7 +191,7 @@ def test_sync_open_limit_orders_recovers_intent_from_trades(tmp_path, monkeypatc
         + "\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr("rebalance.DEFAULT_TRADE_FILE", str(trades_path))
+    monkeypatch.setattr("rebalance.DEFAULT_ORDER_FILE", str(orders_path))
 
     account = MagicMock()
     account.serverTime = 1_700_000_000
@@ -274,7 +299,9 @@ def test_liquidation_log_messages(caplog):
 
     positions = [{"symbol": "ORPH", "qty": "1"}]
 
-    with patch("state.append_trade"):
+    with patch("state.append_trade"), patch(
+        "state.get_cached_valid_tickers", return_value=[]
+    ), patch.object(account, "save_state"):
         with caplog.at_level(logging.INFO, logger="alpaca_bot.state"):
             account.check_balances(session, positions, cfg)
 

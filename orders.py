@@ -5,7 +5,7 @@ from typing import Literal, Optional
 
 import remote
 from alpaca_client import get_snapshot_vwap
-from trade_log import append_trade, build_trade_record
+from trade_log import append_order_event, append_trade, build_trade_record
 from utils import trunc
 
 logger = logging.getLogger("alpaca_bot.orders")
@@ -38,9 +38,11 @@ class OrderResult:
 
 def _log_trade(config, **kwargs):
     record = build_trade_record(paper=config.paper, **kwargs)
-    append_trade(record)
     if record.get("status") == "filled":
+        append_trade(record)
         remote.post_event(config, "trade", dict(record))
+    else:
+        append_order_event(record)
 
 
 def _sanitize_error(response) -> str:

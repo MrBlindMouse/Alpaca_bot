@@ -18,16 +18,14 @@ def analytics_sort_value(stats: TickerStats, column: str) -> Any:
     """Raw sort key for one analytics row."""
     if column == "symbol":
         return stats.symbol
-    if column == "trades":
-        return stats.trade_count
     if column == "filled":
         return stats.filled_count
     if column == "buy":
         return stats.buy_dollars
     if column == "sell":
         return stats.sell_dollars
-    if column == "price":
-        return _nullable_number(stats.current_price)
+    if column == "value":
+        return _nullable_number(stats.market_value)
     if column == "trading_pl":
         return _nullable_number(stats.trading_pl)
     if column == "unreal_pl":

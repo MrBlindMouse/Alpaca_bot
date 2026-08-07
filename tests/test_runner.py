@@ -1,5 +1,5 @@
 import time
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from config import Config
 from market import ClockSnapshot
@@ -31,3 +31,40 @@ def test_runner_start_stop(mock_env, mock_bot_loop):
         time.sleep(0.3)
         runner.stop()
         assert not runner.running
+
+
+@patch("runner.append_trade")
+@patch("runner.get_balances")
+def test_runner_write_off_quarantines(mock_balances, mock_append):
+    config = MagicMock()
+    config.paper = True
+    account = Status()
+    account.tickers = [{"ticker": "AAPL", "volume": 1}]
+    account.market = "open"
+    mock_balances.return_value = [
+        {"symbol": "EA", "qty": "5", "market_value": "900"}
+    ]
+    runner = BotRunner(config, account)
+
+    with patch.object(account, "save_state"):
+        ok, msg = runner.write_off("EA")
+
+    assert ok
+    assert account.is_quarantined("EA")
+    assert "Wrote off EA" in msg
+    mock_append.assert_called_once()
+    record = mock_append.call_args[0][0]
+    assert record["intent"] == "write_off"
+    assert record["symbol"] == "EA"
+
+
+@patch("runner.get_balances")
+def test_runner_write_off_rejects_universe_symbol(mock_balances):
+    config = MagicMock()
+    account = Status()
+    account.tickers = [{"ticker": "EA", "volume": 1}]
+    runner = BotRunner(config, account)
+    ok, msg = runner.write_off("EA")
+    assert not ok
+    assert "universe" in msg
+    mock_balances.assert_not_called()

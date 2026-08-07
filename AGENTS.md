@@ -7,9 +7,9 @@ Personal NASDAQ-100 equal-weight rebalancer on Alpaca (paper or live).
 | Module | Role |
 |--------|------|
 | `bot.py` | Headless CLI entry point |
-| `runner.py` | `BotRunner` — adaptive tick loop, `force_balance` (RTH one-shot) |
+| `runner.py` | `BotRunner` — adaptive tick loop, `force_balance` (RTH one-shot), `write_off` |
 | `tui/` | Textual TUI (`python -m tui`) — see [tui/AGENTS.md](tui/AGENTS.md) |
-| `analytics.py` | Trade/portfolio stats from `trades.jsonl` |
+| `analytics.py` | Trade/portfolio stats from `trades.jsonl` (+ `orders.jsonl` for fill-rate) |
 | `env_config.py` | `.env` margin read/write |
 | `config.py` | `.env` loading and validation |
 | `state.py` | `Status` and `trading_state.json` |
@@ -20,7 +20,7 @@ Personal NASDAQ-100 equal-weight rebalancer on Alpaca (paper or live).
 | `broker.py` | `Broker` protocol (live + sim) |
 | `live_broker.py` | `LiveBroker` — Alpaca adapter for `rebalance_tick` |
 | `orders.py` | `create_order`, `OrderResult`, trade logging hooks |
-| `trade_log.py` | Append-only `trades.jsonl` |
+| `trade_log.py` | Append-only `trades.jsonl` (fills) and `orders.jsonl` (non-fills) |
 | `remote.py` | Optional HMAC webhook (`post_event`; env-gated) |
 | `reporting.py` | Day-end equity payload |
 | `scheduler.py` | `bot_loop`, hourly balance check |
@@ -35,7 +35,7 @@ Uses Alpaca Data API bars (default **5Min** IEX, `adjustment=all`), cached in SQ
 
 **Live:** `scheduler.bot_loop` → `maintain_open_limits` (limit poll/cancel) then `bot()` → snapshot VWAPs → `rebalance_tick` with `LiveBroker` (same hysteresis path as backtest). Tick summary logs at INFO (backtest stays DEBUG).
 
-**TUI:** tab `7` (Backtest) — fetch, run comparison, comparison table; Settings is `8`. Key `f` / Positions “Force balance…” = RTH one-shot equal-$ rebalance for one ticker (no hysteresis).
+**TUI:** tab `7` (Backtest) — fetch, run comparison, comparison table; Settings is `8`. Key `f` / Positions “Force balance…” = RTH one-shot equal-$ rebalance for one ticker (no hysteresis). Key `w` / “Write off…” = quarantine an untradable orphan (no order).
 
 ```bash
 python -m backtest fetch --start 2025-01-01 --end 2025-03-01
@@ -50,9 +50,9 @@ Backtest fetch/run logging uses `backtest.log` (`BACKTEST_LOG_FILE`); `backtest/
 ## Conventions
 
 - **Secrets:** Never log API keys; keep `.env` out of git.
-- **Trades:** Always append to `trades.jsonl`; do not rely on `trading_state.json` for history.
+- **Trades:** Filled trades append to `trades.jsonl` (P/L history). Non-fill order events append to `orders.jsonl`. Do not rely on `trading_state.json` for history. Analytics Unreal P/L is log+state mark (`held×price − (buy$ − sell$)`); TUI Alpaca refresh is an accuracy check only.
 - **Remote:** Default `REMOTE_LOGGING_ENABLED=false`; `REMOTE_BASE_URL` is the full webhook URL; optional `REMOTE_WEBHOOK_SECRET` for HMAC. Event type in `X-Event-Type` (`trade`, `day_end`, `log`). Remote calls must not raise into the scheduler.
-- **State:** `load_state()` raises if the file is missing. CLI/TUI may call `Status.bootstrap` explicitly on first run (`bot.py` auto-creates; TUI Settings / `--init` also).
+- **State:** `load_state()` raises if the file is missing. CLI/TUI may call `Status.bootstrap` explicitly on first run (`bot.py` auto-creates; TUI Settings / `--init` also). Persists `cash` from Alpaca account polls alongside equity.
 - **Tests:** `pytest` from project root; `requirements-dev.txt` for dev deps.
 - **VERSION:** `.env` must be `PAPER` or `LIVE` only.
 
@@ -61,6 +61,10 @@ Backtest fetch/run logging uses `backtest.log` (`BACKTEST_LOG_FILE`); `backtest/
 - YAGNI; reuse `rebalance_tick` + `Broker`; no new deps if avoidable; deletion over abstraction.
 - Clean breaks over shims when changing cache/schema (wipe bars DB if needed).
 - Mark deliberate ceilings with `ponytail:` comments (upgrade path named).
+
+## Gotchas
+
+- Orphan leavers are closed via hourly `check_balances` (`DELETE /positions/{symbol}`), not `rebalance_tick`. Failed closes on permanently untradable assets are **quarantined** (no hourly retry spam; MV excluded from equal-weight targets). Clear with CA settlement (auto) or `python bot.py --write-off SYMBOL` / TUI `w`.
 
 ## Run
 

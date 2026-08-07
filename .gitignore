@@ -7,6 +7,7 @@ test2.py
 trading_state.json
 trading_state.json.tmp
 trades.jsonl
+orders.jsonl
 backtest_trades.jsonl
 backtest_trades_m*.jsonl
 backtest_equity.csv

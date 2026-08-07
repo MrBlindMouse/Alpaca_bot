@@ -31,6 +31,11 @@ Logging examples:
         help="Create trading_state.json from .env and exit",
     )
     parser.add_argument(
+        "--write-off",
+        metavar="SYMBOL",
+        help="Quarantine an untradable orphan symbol and exit",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Run rebalance logic without submitting orders to Alpaca",
@@ -65,6 +70,12 @@ Logging examples:
     else:
         logger.info("Loading account state")
         account.load_state()
+
+    if args.write_off:
+        runner = BotRunner(config, account)
+        ok, message = runner.write_off(args.write_off)
+        print(message)
+        sys.exit(0 if ok else 1)
 
     runner = BotRunner(config, account)
     runner.run_forever()

@@ -1,13 +1,25 @@
 import json
 import logging
 import os
+from datetime import datetime, timezone
 from typing import Optional
 
 from alpaca_client import alpaca_headers
-from ticker_source import find_tickers, get_cached_valid_tickers
-from trade_log import append_trade, build_trade_record
+from ticker_source import (
+    find_tickers,
+    get_cached_valid_tickers,
+    is_permanently_untradable,
+)
+from trade_log import append_order_event, append_trade, build_trade_record
 
 logger = logging.getLogger("alpaca_bot.state")
+
+
+def _position_market_value(item: dict) -> float:
+    try:
+        return float(item.get("market_value") or 0)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 class Status:
@@ -30,17 +42,70 @@ class Status:
         logger.info("Initializing state")
         self.tickers = []
         self.equity = 0
+        self.cash = 0
         self.market = "closed"
         self.serverTime = 0
         self.margin = 0
+        self.quarantined: list[dict] = []
+
+    def is_quarantined(self, symbol: str) -> bool:
+        sym = (symbol or "").upper()
+        return any(q.get("symbol") == sym for q in self.quarantined)
+
+    def quarantine(
+        self, symbol: str, reason: str, market_value: float = 0.0
+    ) -> None:
+        sym = (symbol or "").strip().upper()
+        if not sym:
+            return
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        for entry in self.quarantined:
+            if entry.get("symbol") == sym:
+                entry["reason"] = reason
+                entry["market_value"] = float(market_value or 0)
+                if not entry.get("since"):
+                    entry["since"] = now
+                return
+        self.quarantined.append(
+            {
+                "symbol": sym,
+                "reason": reason,
+                "since": now,
+                "market_value": float(market_value or 0),
+            }
+        )
+        logger.warning("Quarantined %s (%s)", sym, reason)
+
+    def clear_quarantine(self, symbol: str) -> bool:
+        sym = (symbol or "").strip().upper()
+        before = len(self.quarantined)
+        self.quarantined = [q for q in self.quarantined if q.get("symbol") != sym]
+        return len(self.quarantined) < before
+
+    def tradable_equity(self, raw: float) -> float:
+        trapped = sum(float(q.get("market_value") or 0) for q in self.quarantined)
+        return max(0.0, float(raw) - trapped)
 
     def check_balances(self, session, positions, config):
         """Update ticker quantities or liquidate orphans not in the universe."""
+        cached = get_cached_valid_tickers()
+        if cached:
+            local = {t["ticker"] for t in self.tickers}
+            if local != set(cached):
+                logger.info(
+                    "Universe stale vs cache (%d local, %d cached); refreshing",
+                    len(local),
+                    len(cached),
+                )
+                self.check_ticker(session, config)
+
         held: dict[str, float] = {}
+        held_mv: dict[str, float] = {}
         for item in positions:
             symbol = item["symbol"]
             qty = float(item["qty"])
             held[symbol] = qty
+            held_mv[symbol] = _position_market_value(item)
             found = False
             for key, ticker in enumerate(self.tickers):
                 if ticker["ticker"] == symbol:
@@ -49,6 +114,12 @@ class Status:
                         self.tickers[key]["volume"] = qty
                     break
             if not found:
+                if self.is_quarantined(symbol):
+                    for entry in self.quarantined:
+                        if entry.get("symbol") == symbol:
+                            entry["market_value"] = held_mv[symbol]
+                            break
+                    continue
                 if getattr(config, "dry_run", False):
                     logger.info("Dry-run: would liquidate orphan %s", symbol)
                     append_trade(
@@ -89,7 +160,7 @@ class Status:
                 else:
                     err = f"{result.status_code} {result.reason}"
                     logger.error("Failed liquidate %s: %s", symbol, err)
-                    append_trade(
+                    append_order_event(
                         build_trade_record(
                             symbol=symbol,
                             side="sell",
@@ -101,11 +172,26 @@ class Status:
                             error=err,
                         )
                     )
+                    permanent = is_permanently_untradable(session, config, symbol)
+                    if permanent is True:
+                        self.quarantine(
+                            symbol,
+                            reason=f"untradable after liquidate fail: {err}",
+                            market_value=held_mv[symbol],
+                        )
+
+        # Drop quarantine once the broker no longer holds the symbol (CA settled).
+        for sym in [q.get("symbol") for q in list(self.quarantined)]:
+            if sym and sym not in held:
+                self.clear_quarantine(sym)
+                logger.info("Cleared quarantine for %s (no longer held)", sym)
 
         # Universe symbols flat at the broker must not keep a stale local volume.
         for key, ticker in enumerate(self.tickers):
             if ticker["ticker"] not in held and float(ticker.get("volume") or 0) != 0:
                 self.tickers[key]["volume"] = 0.0
+
+        self.save_state()
 
     def check_ticker(self, session, config):
         """Update equity list for NASDAQ100 changes."""
@@ -143,14 +229,18 @@ class Status:
                     new_ticker["volume"] = old.get("volume", 0)
                     new_ticker["price"] = old.get("price", 0)
                     new_ticker["difference"] = old.get("difference", 0)
-                    new_ticker["limitTrade"] = old.get("limitTrade", new_ticker["limitTrade"])
+                    new_ticker["limitTrade"] = old.get(
+                        "limitTrade", new_ticker["limitTrade"]
+                    )
                 new_list.append(new_ticker)
             self.tickers = new_list
             self.save_state()
             logger.info("Tickers updated (%d symbols)", len(new_list))
         else:
             if self.tickers:
-                logger.warning("Keeping previous ticker list (%d tickers)", len(self.tickers))
+                logger.warning(
+                    "Keeping previous ticker list (%d tickers)", len(self.tickers)
+                )
             else:
                 logger.warning("Ticker list empty; will retry on next tick")
 
@@ -159,9 +249,11 @@ class Status:
         payload = {
             "tickers": self.tickers,
             "equity": self.equity,
+            "cash": self.cash,
             "market": self.market,
             "serverTime": self.serverTime,
             "margin": self.margin,
+            "quarantined": self.quarantined,
         }
         directory = os.path.dirname(target) or "."
         os.makedirs(directory, exist_ok=True)
@@ -176,9 +268,11 @@ class Status:
                 state = json.load(file)
                 self.tickers = state["tickers"]
                 self.equity = state["equity"]
+                self.cash = float(state.get("cash") or 0)
                 self.market = state["market"]
                 self.serverTime = state["serverTime"]
                 self.margin = state["margin"]
+                self.quarantined = state.get("quarantined") or []
         else:
             raise FileNotFoundError(
                 f"State file {self.STATE_FILE} not found. "

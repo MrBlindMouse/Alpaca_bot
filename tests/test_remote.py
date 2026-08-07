@@ -139,7 +139,7 @@ def test_log_trade_non_filled_skips_event(mock_post):
 
     config = MagicMock()
     config.paper = True
-    with patch("orders.append_trade"):
+    with patch("orders.append_order_event") as mock_order:
         _log_trade(
             config,
             symbol="AAPL",
@@ -151,6 +151,32 @@ def test_log_trade_non_filled_skips_event(mock_post):
             order_id="1",
         )
     mock_post.assert_not_called()
+    mock_order.assert_called_once()
+
+
+@patch("remote.post_event")
+def test_log_trade_filled_uses_trades_file(mock_post):
+    from orders import _log_trade
+
+    config = MagicMock()
+    config.paper = True
+    with patch("orders.append_trade") as mock_trade, patch(
+        "orders.append_order_event"
+    ) as mock_order:
+        _log_trade(
+            config,
+            symbol="AAPL",
+            side="buy",
+            intent="rebalance_buy",
+            order_type="market",
+            market_session="open",
+            status="filled",
+            order_id="1",
+            notional=100.0,
+        )
+    mock_trade.assert_called_once()
+    mock_order.assert_not_called()
+    mock_post.assert_called_once()
 
 
 @patch("remote.requests.post")

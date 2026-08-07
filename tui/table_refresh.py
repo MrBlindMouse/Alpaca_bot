@@ -68,11 +68,10 @@ def analytics_signature(
         rows.append(
             (
                 sym,
-                s.trade_count,
                 s.filled_count,
                 round(s.buy_dollars, 2),
                 round(s.sell_dollars, 2),
-                None if s.current_price is None else round(s.current_price, 4),
+                None if s.market_value is None else round(s.market_value, 2),
                 None if s.trading_pl is None else round(s.trading_pl, 2),
                 None if s.unrealized_pl is None else round(s.unrealized_pl, 2),
                 None if s.swing_pct is None else round(s.swing_pct, 2),

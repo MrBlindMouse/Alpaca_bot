@@ -3,7 +3,7 @@ import logging
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Dict, List, Set
+from typing import Dict, List, Optional, Set
 
 import requests
 from bs4 import BeautifulSoup
@@ -193,6 +193,30 @@ def _check_single_asset(session, config, ticker: str) -> bool:
     except requests.RequestException as exc:
         logger.warning("Asset check failed for %s: %s", ticker, exc)
         return False
+
+
+def is_permanently_untradable(session, config, ticker: str) -> Optional[bool]:
+    """True if missing/inactive/untradable; False if still tradable; None if unknown."""
+    try:
+        asset_url = f"{config.urlBase}markets/v2/assets/{ticker}"
+        asset_result = session.get(
+            asset_url, headers=alpaca_headers(config), timeout=10
+        )
+        code = asset_result.status_code
+        if code == 404:
+            return True
+        if code != 200:
+            logger.warning(
+                "Asset check HTTP %s for %s: %s", code, ticker, asset_result.reason
+            )
+            return None
+        info = asset_result.json()
+        if info.get("status") != "active" or not info.get("tradable"):
+            return True
+        return False
+    except requests.RequestException as exc:
+        logger.warning("Asset check failed for %s: %s", ticker, exc)
+        return None
 
 
 def find_tickers(session, config):

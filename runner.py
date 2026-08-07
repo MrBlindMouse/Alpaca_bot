@@ -11,7 +11,7 @@ from datetime import date, datetime, timezone
 from typing import Optional, Tuple
 from zoneinfo import ZoneInfo
 
-from alpaca_client import AlpacaAPIError, alpaca_headers, create_session, get_account
+from alpaca_client import AlpacaAPIError, alpaca_headers, create_session, get_account, get_balances
 from config import Config, log_remote_disabled_once
 from live_broker import LiveBroker
 from market import ClockSnapshot, MarketTracker, check_time, compute_tick_sleep_seconds
@@ -20,6 +20,7 @@ from reporting import day_end
 from resilience import CircuitBreaker
 from scheduler import bot_loop, check_balances
 from state import Status
+from trade_log import append_trade, build_trade_record
 
 logger = logging.getLogger("alpaca_bot.runner")
 
@@ -117,6 +118,7 @@ class BotRunner:
                     self._last_error = str(exc)
                     return False, str(exc)
                 self.account.equity = float(account_data["equity"])
+                self.account.cash = float(account_data.get("cash") or 0)
 
                 headers = alpaca_headers(self.config, json_content=True)
                 prices = _fetch_snapshot_prices(
@@ -142,6 +144,59 @@ class BotRunner:
             except Exception as exc:
                 self._last_error = str(exc)
                 logger.exception("force_balance failed")
+                return False, str(exc)
+
+    def write_off(self, symbol: str) -> Tuple[bool, str]:
+        """Quarantine an untradable orphan; no order is placed."""
+        sym = (symbol or "").strip().upper()
+        if not sym:
+            return False, "Symbol required"
+
+        with self._tick_lock:
+            try:
+                universe = {t["ticker"] for t in self.account.tickers}
+                if sym in universe:
+                    return False, f"{sym} is still in the universe; drop it first"
+
+                market_value = 0.0
+                positions = get_balances(self.session, self.config)
+                if positions is None:
+                    return False, "Could not load positions"
+                for item in positions:
+                    if item.get("symbol") == sym:
+                        try:
+                            market_value = float(item.get("market_value") or 0)
+                        except (TypeError, ValueError):
+                            market_value = 0.0
+                        break
+                else:
+                    if self.account.is_quarantined(sym):
+                        self.account.clear_quarantine(sym)
+                        self.account.save_state()
+                        return True, f"{sym} not held; cleared quarantine"
+                    return False, f"{sym} not held and not quarantined"
+
+                self.account.quarantine(
+                    sym, reason="manual write-off", market_value=market_value
+                )
+                self.account.save_state()
+                append_trade(
+                    build_trade_record(
+                        symbol=sym,
+                        side="sell",
+                        intent="write_off",
+                        order_type="market",
+                        market_session=self.account.market,
+                        status="filled",
+                        paper=self.config.paper,
+                        error=None,
+                    )
+                )
+                self._last_error = None
+                return True, f"Wrote off {sym} (quarantined, mv=${market_value:.2f})"
+            except Exception as exc:
+                self._last_error = str(exc)
+                logger.exception("write_off failed")
                 return False, str(exc)
 
     def _safe_check_balances(self):

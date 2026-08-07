@@ -4,18 +4,29 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 DEFAULT_TRADE_FILE = "trades.jsonl"
+DEFAULT_ORDER_FILE = "orders.jsonl"
 
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def append_trade(record: dict[str, Any], path: str = DEFAULT_TRADE_FILE) -> None:
+def _append_jsonl(record: dict[str, Any], path: str) -> None:
     row = {"ts": utc_now_iso(), **record}
     with open(path, "a", encoding="utf-8") as file:
         file.write(json.dumps(row, default=str) + "\n")
         file.flush()
         os.fsync(file.fileno())
+
+
+def append_trade(record: dict[str, Any], path: str = DEFAULT_TRADE_FILE) -> None:
+    """Append a filled trade to the long-term P/L log."""
+    _append_jsonl(record, path)
+
+
+def append_order_event(record: dict[str, Any], path: str = DEFAULT_ORDER_FILE) -> None:
+    """Append a non-fill order lifecycle event (failed, limit_*, …)."""
+    _append_jsonl(record, path)
 
 
 def build_trade_record(

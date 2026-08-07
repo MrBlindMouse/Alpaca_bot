@@ -90,10 +90,16 @@ def cash_display_value(
     account: Optional[dict],
     state: Optional[dict],
 ) -> tuple[str, bool]:
-    """Return (display cash, needs_alpaca_refresh)."""
+    """Return (display cash, is_estimated).
+
+    Primary source is state cash from the bot poll. Alpaca account cash is
+    only used as a fallback before the first poll (or after Refresh).
+    """
+    st = state or {}
+    if st.get("cash") is not None:
+        return format_money(float(st.get("cash") or 0)), False
     if account and account.get("cash") is not None:
         return format_money(float(account["cash"])), False
-    st = state or {}
     equity = float(st.get("equity", 0))
     if equity <= 0:
         return "—", True
@@ -179,12 +185,11 @@ def analytics_row_cells(
     )
     return (
         _styled_cell(sym, style),
-        _styled_cell(stats.trade_count, style),
         _styled_cell(stats.filled_count, style),
         _styled_cell(format_money(stats.buy_dollars), style),
         _styled_cell(format_money(stats.sell_dollars), style),
         _styled_cell(
-            format_money(stats.current_price) if stats.current_price is not None else "—",
+            format_money(stats.market_value) if stats.market_value is not None else "—",
             style,
         ),
         _styled_cell(format_pl(trading) if trading is not None else "—", style),
