@@ -166,10 +166,10 @@ The **Analytics** tab combines `trades.jsonl` (period for Trading P/L; all-time 
 | **Buy $ / Sell $** | Sum of filled notional for the period, excluding initial buys (`rebalance_initial`) and orphan liquidations (`liquidate`). |
 | **Value** | `qty × price` from `trading_state.json`. |
 | **Trading P/L** | `(sell $ − buy $) + (net rebalance qty × current price)` for **filled** rebalance trades (`rebalance_buy`, `rebalance_sell`, `rebalance`) in the period. Excludes initial buys (`rebalance_initial`) and orphan liquidations (`liquidate`). `—` when there were no rebalance fills for that symbol. Summary line shows the portfolio total. |
-| **Unreal. P/L** | `held×price − (buy$ − sell$)` from **all-time** fills (every intent) plus current state mark. Period filter does not apply to the cashflow leg. |
+| **Unreal. P/L** | `held×price − (buy$ − sell$)` from **all-time** fills (every intent) plus current state mark. Period filter does not apply to the cashflow leg. Symbols absent from `trading_state` (NDX leavers) keep Value `—` and are treated as fully exited for Unreal (historical null liquidate sells are closed at cost). |
 | **Swing %** | How far the position is from the bot’s equal-weight target (rebalance band), not daily stock return. |
 
-Summary **Avg Net $** is the per-ticker rebalance target: `equity ÷ (ticker_count + ticker_count×margin÷2)` (same as the live rebalance loop).
+Summary **Avg Net $** is the per-ticker rebalance target: `equity ÷ (ticker_count + ticker_count×margin÷2)` (same as the live rebalance loop). Orphan liquidates log pre-close qty and market value into `trades.jsonl` for cashflow.
 
 **Trade activity** (footer chart) ranks symbols by **filled** trade count in the period, not failed or limit-placed orders.
 

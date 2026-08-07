@@ -22,6 +22,16 @@ def _position_market_value(item: dict) -> float:
         return 0.0
 
 
+def _liquidate_fill_fields(qty: float, market_value: float) -> dict:
+    """Pre-close mark for orphan liquidate logs (no fill poll)."""
+    avg = (market_value / qty) if qty > 0 else None
+    return {
+        "filled_qty": qty,
+        "notional": market_value if market_value > 0 else None,
+        "filled_avg_price": avg,
+    }
+
+
 class Status:
     STATE_FILE = "trading_state.json"
 
@@ -133,6 +143,7 @@ class Status:
                             paper=config.paper,
                             order_id="dry-run",
                             error=None,
+                            **_liquidate_fill_fields(qty, held_mv[symbol]),
                         )
                     )
                     continue
@@ -155,6 +166,7 @@ class Status:
                             status="filled",
                             paper=config.paper,
                             error=None,
+                            **_liquidate_fill_fields(qty, held_mv[symbol]),
                         )
                     )
                 else:

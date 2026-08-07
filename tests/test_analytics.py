@@ -188,6 +188,51 @@ def test_aggregate_unrealized_uses_all_time_fills():
     assert stats["AAPL"].unrealized_pl == 0.0
 
 
+def test_aggregate_leaver_null_liquidate_closes_unreal():
+    """Symbol left universe; historical liquidate had no dollars → Unreal ~0."""
+    trades = [
+        {
+            "symbol": "ZS",
+            "side": "buy",
+            "status": "filled",
+            "intent": "rebalance_initial",
+            "notional": 1113.04,
+        },
+        {
+            "symbol": "ZS",
+            "side": "sell",
+            "status": "filled",
+            "intent": "liquidate",
+            "notional": None,
+            "filled_qty": None,
+            "filled_avg_price": None,
+        },
+    ]
+    # Still-held name in state; ZS is a leaver (absent).
+    state_tickers = [{"ticker": "AAPL", "volume": 1, "price": 100, "difference": 0}]
+    stats = aggregate_by_ticker(trades, state_tickers=state_tickers)
+    assert "ZS" in stats
+    assert stats["ZS"].market_value is None
+    assert stats["ZS"].held_qty == 0.0
+    assert stats["ZS"].unrealized_pl == 0.0
+
+
+def test_aggregate_in_universe_unchanged_by_leaver_logic():
+    trades = [
+        {
+            "symbol": "AAPL",
+            "side": "buy",
+            "status": "filled",
+            "intent": "rebalance_initial",
+            "notional": 1000,
+        },
+    ]
+    state_tickers = [{"ticker": "AAPL", "volume": 10, "price": 110, "difference": 0.01}]
+    stats = aggregate_by_ticker(trades, state_tickers=state_tickers)
+    assert stats["AAPL"].market_value == 1100.0
+    assert stats["AAPL"].unrealized_pl == 100.0
+
+
 def test_aggregate_trading_pl_with_sell():
     trades = [
         {

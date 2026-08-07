@@ -40,6 +40,7 @@ class TickerStats:
     _trading_sell_qty: float = 0.0
     _cashflow_buy_dollars: float = 0.0
     _cashflow_sell_dollars: float = 0.0
+    _null_liquidate_fill: bool = False
 
     @property
     def net_flow(self) -> float:
@@ -282,6 +283,10 @@ def aggregate_by_ticker(
         s = _ensure(symbol)
         dollars = _fill_dollars(row)
         if dollars is None:
+            # ponytail: historical liquidates logged without economics; close at
+            # cost for leavers below. Upgrade: state.py logs qty+MV on liquidate.
+            if row.get("intent") == "liquidate" and row.get("side") == "sell":
+                s._null_liquidate_fill = True
             continue
         if row.get("side") == "buy":
             s._cashflow_buy_dollars += dollars
@@ -304,11 +309,13 @@ def aggregate_by_ticker(
             if ts and (s.last_trade_ts is None or ts > s.last_trade_ts):
                 s.last_trade_ts = ts
 
+    state_symbols: set = set()
     if state_tickers:
         for t in state_tickers:
             sym = t.get("ticker", "")
             if not sym:
                 continue
+            state_symbols.add(sym)
             s = _ensure(sym)
             s.swing_pct = float(t.get("difference", 0)) * 100
             s.held_qty = float(t.get("volume", 0) or 0)
@@ -320,6 +327,17 @@ def aggregate_by_ticker(
                 s.weight_pct = (s.market_value / account_equity) * 100
 
     for s in stats.values():
+        if state_symbols and s.symbol not in state_symbols:
+            # Universe leaver: no state mark; treat as fully exited.
+            s.held_qty = 0.0
+            s.current_price = None
+            s.market_value = None
+            s.swing_pct = None
+            s.weight_pct = None
+            if s._null_liquidate_fill:
+                gap = s._cashflow_buy_dollars - s._cashflow_sell_dollars
+                if gap > 0:
+                    s._cashflow_sell_dollars += gap
         s.trading_pl = compute_trading_pl(
             s._trading_buy_dollars,
             s._trading_sell_dollars,

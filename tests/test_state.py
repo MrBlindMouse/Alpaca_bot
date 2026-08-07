@@ -77,11 +77,11 @@ def test_check_balances_liquidates_only_orphans():
 
     positions = [
         {"symbol": "AAPL", "qty": "1"},
-        {"symbol": "ORPHAN", "qty": "2"},
+        {"symbol": "ORPHAN", "qty": "2", "market_value": "220.50"},
     ]
 
     with (
-        patch("state.append_trade"),
+        patch("state.append_trade") as mock_log,
         patch("state.get_cached_valid_tickers", return_value=[]),
         patch.object(account, "save_state"),
     ):
@@ -90,6 +90,13 @@ def test_check_balances_liquidates_only_orphans():
     assert session.delete.call_count == 1
     call_url = session.delete.call_args[0][0]
     assert "ORPHAN" in call_url
+    mock_log.assert_called_once()
+    record = mock_log.call_args[0][0]
+    assert record["intent"] == "liquidate"
+    assert record["status"] == "filled"
+    assert record["filled_qty"] == 2.0
+    assert record["notional"] == 220.50
+    assert record["filled_avg_price"] == 110.25
 
 
 def test_check_balances_dry_run_skips_liquidate():
@@ -109,11 +116,17 @@ def test_check_balances_dry_run_skips_liquidate():
         patch.object(account, "save_state"),
     ):
         account.check_balances(
-            session, [{"symbol": "ORPHAN", "qty": "2"}], config
+            session,
+            [{"symbol": "ORPHAN", "qty": "2", "market_value": "100"}],
+            config,
         )
 
     session.delete.assert_not_called()
     mock_log.assert_called_once()
+    record = mock_log.call_args[0][0]
+    assert record["filled_qty"] == 2.0
+    assert record["notional"] == 100.0
+    assert record["filled_avg_price"] == 50.0
 
 
 def test_check_balances_zeros_flat_universe_symbol():

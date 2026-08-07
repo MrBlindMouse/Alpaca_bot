@@ -958,6 +958,7 @@ class AlpacaApp(App):
             f"[dim]Trading P/L = (sell $ − buy $) + net rebalance qty×price "
             "(rebalance fills only; excludes initial buy and liquidation). "
             "Unreal = held×price − (buy$ − sell$) from all fills (all-time). "
+            "Leavers (not in state) show Value —; Unreal treats them as closed. "
             "Click headers to sort.[/dim]"
             f"{check_line}"
         )

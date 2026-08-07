@@ -50,7 +50,7 @@ Backtest fetch/run logging uses `backtest.log` (`BACKTEST_LOG_FILE`); `backtest/
 ## Conventions
 
 - **Secrets:** Never log API keys; keep `.env` out of git.
-- **Trades:** Filled trades append to `trades.jsonl` (P/L history). Non-fill order events append to `orders.jsonl`. Do not rely on `trading_state.json` for history. Analytics Unreal P/L is log+state mark (`held×price − (buy$ − sell$)`); TUI Alpaca refresh is an accuracy check only.
+- **Trades:** Filled trades append to `trades.jsonl` (P/L history). Non-fill order events append to `orders.jsonl`. Do not rely on `trading_state.json` for history. Analytics Unreal P/L is log+state mark (`held×price − (buy$ − sell$)`); leavers absent from state are closed in Unreal; TUI Alpaca refresh is an accuracy check only. Orphan liquidates log qty + pre-close market value.
 - **Remote:** Default `REMOTE_LOGGING_ENABLED=false`; `REMOTE_BASE_URL` is the full webhook URL; optional `REMOTE_WEBHOOK_SECRET` for HMAC. Event type in `X-Event-Type` (`trade`, `day_end`, `log`). Remote calls must not raise into the scheduler.
 - **State:** `load_state()` raises if the file is missing. CLI/TUI may call `Status.bootstrap` explicitly on first run (`bot.py` auto-creates; TUI Settings / `--init` also). Persists `cash` from Alpaca account polls alongside equity.
 - **Tests:** `pytest` from project root; `requirements-dev.txt` for dev deps.
